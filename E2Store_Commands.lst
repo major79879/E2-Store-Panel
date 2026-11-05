@@ -27,7 +27,7 @@ wget -O /tmp/online4tech.sh https://online4tech.github.io/online4Tech/install.sh
 ## === # Mohamed Store - Mahamed Iraqy # = # لوحة شاملة تجمع عشرات الأدوات والإضافات والخدمات # === ##
 wget -O - https://raw.githubusercontent.com/wwwgoper77-wq/MohamedStore/main/install.sh | sh
 
-## ============================== +++ Tools Plugins +++ ============================== ##
+## ============================== +++ Tools +++ ============================== ##
 
 ## === # Arabic Savior - Fairbird # = # تحسين دعم اللغة العربية وإصلاح مشاكل الخطوط والترجمة # === ##
 wget https://raw.githubusercontent.com/fairbird/ArabicSavior/main/installer.sh -O - | /bin/sh
