@@ -1,6 +1,6 @@
 #!/bin/sh
 # E2 Store installer  -  عدّل REPO ليشير إلى مستودعك على GitHub
-REPO="https://raw.githubusercontent.com/major79879/LinuxCommands/refs/heads/main/E2Store"
+REPO="https://raw.githubusercontent.com/major79879/E2-Store-Panel/refs/heads/main/E2Store"
 DIR="/usr/lib/enigma2/python/Plugins/Extensions/E2Store"
 mkdir -p "$DIR"
 for f in __init__.py lstparser.py plugin.py plugin.png; do
