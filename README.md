@@ -1,1 +1,1 @@
-# E2-Store-Panel
+# Major-Enigma-Panel-By-John-Kamel
