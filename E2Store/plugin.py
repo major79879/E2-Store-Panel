@@ -1179,6 +1179,7 @@ class ListPanel(PanelBase):
 
 # --------------------------------- عرض الشبكة (Grid) -------------------------
 GRID_COLS, GRID_ROWS = 8, 2
+GRID_RADIUS = 0          # الزوايا الدائرية في Grid تُحمِّل مسرّع الرسم (TDE) - 0 = بدون زوايا
 GRID_PER = GRID_COLS * GRID_ROWS
 TILE_W, TILE_H = 218, 170
 TILE_X0, TILE_PITCH = 40, 230
@@ -1239,14 +1240,14 @@ class GridPanel(PanelBase):
             col, row = i % GRID_COLS, i // GRID_COLS
             x, y = TILE_X0 + col * TILE_PITCH, TILE_Y0 + row * TILE_YPITCH
             parts.append('<widget name="t%d_bg" %s backgroundColor="%s" cornerRadius="%d" transparent="0" zPosition="0"/>' % (
-                i, rect(x, y, TILE_W, TILE_H), c["card"], s(18)))
+                i, rect(x, y, TILE_W, TILE_H), c["card"], s(GRID_RADIUS)))
             parts.append(pixw("t%d_ic" % i, (x + 77, y + 22, 64, 64), z=2))
             parts.append(wid("t%d_nm" % i, (x + 8, y + 98, TILE_W - 16, 66), font=22, fg=c["text"],
                              halign="center", valign="top"))
         parts += [
             pixw("sel_frame", (TILE_X0, TILE_Y0, TILE_W, TILE_H), z=1),
             '<widget name="sel_box" %s backgroundColor="%s" cornerRadius="%d" transparent="0" zPosition="1"/>' % (
-                rect(TILE_X0, TILE_Y0, TILE_W, TILE_H), c["sel"], s(18)),
+                rect(TILE_X0, TILE_Y0, TILE_W, TILE_H), c["sel"], s(GRID_RADIUS)),
             wid("g_page", (40, 902, 800, 34), font=22, fg=c["muted"], bg=c["bg"]),
             buttons_xml(),
             '</screen>',
