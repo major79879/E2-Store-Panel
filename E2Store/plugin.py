@@ -6,10 +6,12 @@
 # ---------------------------------------------------------------------------
 import base64
 import collections
+import gc
 import glob
 import json
 import os
 import re
+import shutil
 import ssl
 import struct
 import sys
@@ -17,7 +19,8 @@ import time
 from urllib.request import Request, urlopen
 
 from enigma import (eConsoleAppContainer, eListboxPythonMultiContent, getDesktop, gFont,
-                    ePoint, eSize, eTimer, RT_HALIGN_LEFT, RT_HALIGN_RIGHT, RT_VALIGN_CENTER)
+                    ePoint, eSize, eTimer, RT_HALIGN_CENTER, RT_HALIGN_LEFT, RT_HALIGN_RIGHT,
+                    RT_VALIGN_CENTER, RT_VALIGN_TOP)
 from Components.ActionMap import ActionMap
 from Components.Label import Label
 from Components.MenuList import MenuList
@@ -39,6 +42,10 @@ try:
     from enigma import BT_SCALE
 except ImportError:
     BT_SCALE = 0
+try:
+    from enigma import RT_WRAP
+except ImportError:
+    RT_WRAP = 0
 
 try:    # تشغيل الأوامر على طرفية حقيقية (pty) لتظهر الخطوات مثل التيرمنال
     import codecs
@@ -65,7 +72,9 @@ INSTALLER_URL = "https://raw.githubusercontent.com/major79879/E2-Store-Panel/ref
 UPDATE_CMD = 'wget -q --no-check-certificate -O - "%s" | /bin/sh -s norestart' % INSTALLER_URL
 SETTINGS_FILE = "/etc/enigma2/e2store_settings.json"      # عرض البانل + الثيم المختار
 RUN_LOG = "/tmp/e2store_run.log"                          # سجل تشخيصي لشاشة التنفيذ
-DEFAULT_SETTINGS = {"view": "list", "theme": "neon_blue"}
+ASSET_DIR = "/tmp/e2store"                                # صور مؤقتة صغيرة تُحذف عند إغلاق البانل
+ERROR_LOG = "/tmp/e2store_error.log"
+DEFAULT_SETTINGS = {"view": "list", "theme": "neon_blue", "anim": False}
 # ============================================================================
 
 # ---- مصدر واحد لتعريف الثيمات (يُستخدم في plugin.py وفي توليد الصور) ----
@@ -145,15 +154,16 @@ def load_settings():
         pass
     view = data.get("view", DEFAULT_SETTINGS["view"])
     theme = data.get("theme", DEFAULT_SETTINGS["theme"])
-    _state["view"] = "list"                 # Grid removed: List only
+    _state["view"] = view if view in ("list", "grid") else DEFAULT_SETTINGS["view"]
     _state["theme"] = theme if theme in THEMES else DEFAULT_SETTINGS["theme"]
+    _state["anim"] = bool(data.get("anim", DEFAULT_SETTINGS["anim"]))
     return _state
 
 
-def save_settings(view, theme):
+def save_settings(view, theme, anim=False):
     try:
         with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
-            json.dump({"view": view, "theme": theme}, f)
+            json.dump({"view": view, "theme": theme, "anim": bool(anim)}, f)
         return True
     except Exception:
         return False
@@ -426,38 +436,102 @@ def get_hdd():
 
 
 # ------------------------------ الصور المدمجة --------------------------------
-_assets_mod = [None]
+# assets.py كبير (صور base64): نستخرج منه فقط ما يلزم الثيم والعرض المختارين إلى /tmp،
+# ثم نحذف الوحدة من الذاكرة فوراً. وعند إغلاق البانل يُحذف مجلد /tmp/e2store بالكامل.
+_icon_cache = {}
 
 
-def assets():
-    """assets.py is imported lazily (only when the panel opens)."""
-    if _assets_mod[0] is None:
-        from . import assets as a
-        _assets_mod[0] = a
-    return _assets_mod[0]
+def asset_path(name):
+    return os.path.join(ASSET_DIR, name + ".png")
 
 
-def write_png(folder, name, data):
-    """Writes a base64 PNG to /tmp (always rewritten, so updates never show stale pictures)."""
-    os.makedirs(folder, exist_ok=True)
-    path = os.path.join(folder, name + ".png")
-    with open(path, "wb") as f:
-        f.write(base64.b64decode(data))
-    return path
-
-
-def load_pix(folder, name, data):
+def pix(name):
+    """Pixmap of an extracted asset (None if missing)."""
+    p = asset_path(name)
     try:
-        return LoadPixmap(write_png(folder, name, data))
+        return LoadPixmap(p) if os.path.isfile(p) else None
     except Exception:
         return None
+
+
+def release_assets():
+    """Drop the big assets module from RAM."""
+    try:
+        pkg = sys.modules.get(__package__)
+        if pkg is not None and hasattr(pkg, "assets"):
+            delattr(pkg, "assets")
+        sys.modules.pop((__package__ or "") + ".assets", None)
+    except Exception:
+        pass
+    gc.collect()
+
+
+def cleanup_assets():
+    _icon_cache.clear()
+    shutil.rmtree(ASSET_DIR, ignore_errors=True)
+    gc.collect()
+
+
+def dlog_error(msg):
+    try:
+        with open(ERROR_LOG, "a", encoding="utf-8") as f:
+            f.write("%s  %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), msg))
+    except Exception:
+        pass
+
+
+def _put(name, data):
+    with open(asset_path(name), "wb") as f:
+        f.write(base64.b64decode(data))
+
+
+def prep_assets(view, theme_key, anim):
+    """Extracts only the pictures needed for this view / theme / animation setting."""
+    try:
+        from . import assets as a
+    except Exception as e:
+        dlog_error("assets.py not available: %s" % e)
+        return False
+    ok = False
+    try:
+        _icon_cache.clear()
+        shutil.rmtree(ASSET_DIR, ignore_errors=True)
+        os.makedirs(ASSET_DIR, exist_ok=True)
+        th = THEMES.get(theme_key) or THEMES["neon_blue"]
+        _put("logo", a.LOGO)
+        _put("box_default", a.DEFAULT_BOX)
+        if th["modern"]:
+            glow = a.LOGO_GLOW
+            if anim:
+                for i, g in enumerate(glow):
+                    _put("lg%d" % i, g)
+            else:
+                _put("lg_static", glow[min(3, len(glow) - 1)])
+            fam = a.TITLE[th["title_set"]]
+            _put("tglow", fam["glow"])
+            for i, fr in enumerate(fam["frames"] if anim else fam["frames"][:1]):
+                _put("f%02d" % i, fr)
+        for kind, data in (a.SEL.get(theme_key) or {}).items():
+            _put("sel_" + kind, data)
+        _put("emblem", a.EMBLEM[theme_key])
+        seg = a.SEG[theme_key]
+        _put("seg_off", seg["off"])
+        for i, d_ in enumerate(seg["on"]):
+            _put("seg_on%d" % i, d_)
+        for size in ((64, 96) if view == "grid" else (48,)):
+            for key, data in getattr(a, "ICONS%d" % size).items():
+                _put("ic%d_%s" % (size, key), data)
+        ok = True
+    except Exception as e:
+        dlog_error("prep_assets failed: %s" % e)
+    del a
+    release_assets()
+    return ok
 
 
 def _default_box_image():
-    try:
-        return write_png("/tmp/e2store_box", "default", assets().DEFAULT_BOX)
-    except Exception:
-        return None
+    p = asset_path("box_default")
+    return p if os.path.isfile(p) else None
 
 
 # ------------------------------ أيقونات الأقسام ------------------------------
@@ -470,11 +544,12 @@ ICON_RULES = (
     ("image", "disc"), ("spinner", "spinner"), ("feed", "rss"),
     ("backup", "backup"), ("restore", "restore"), ("other", "puzzle"),
 )
-_icon_cache = {}
 
 
 def icon_key(cat_name):
     n = cat_name.lower()
+    if n == "all":
+        return "all"
     if n.startswith("search:"):
         return "search"
     for word, icon in ICON_RULES:
@@ -492,12 +567,7 @@ def get_icon(cat_name, size=48):
         ptr = None
         try:
             own = os.path.join(PLUGIN_DIR, "icons", key + ".png")
-            if os.path.isfile(own):
-                ptr = LoadPixmap(own)
-            else:
-                data = getattr(assets(), "ICONS%d" % size).get(key)
-                if data:
-                    ptr = load_pix("/tmp/e2store_icons", "%s_%d" % (key, size), data)
+            ptr = LoadPixmap(own) if os.path.isfile(own) else pix("ic%d_%s" % (size, key))
         except Exception:
             ptr = None
         _icon_cache[ck] = ptr
@@ -505,23 +575,7 @@ def get_icon(cat_name, size=48):
 
 
 # ------------------------------ مساعدات الـ Skin ------------------------------
-NEON_FALLBACK = ((25, 211, 255), (47, 124, 255), (139, 92, 255), (224, 61, 255), (255, 79, 163))
 BAR_SEGS = 30
-
-
-def neon_hex(t, stops=None):
-    """t in 0..1 -> '#RRGGBB' along the theme gradient"""
-    stops = stops or NEON_FALLBACK
-    t = min(max(t, 0.0), 1.0) * (len(stops) - 1)
-    i = min(int(t), len(stops) - 2)
-    f = t - i
-    a, b = stops[i], stops[i + 1]
-    return "#%02X%02X%02X" % tuple(int(round(a[k] + (b[k] - a[k]) * f)) for k in range(3))
-
-
-def seg_color(i):
-    t = T()
-    return neon_hex(i / float(BAR_SEGS - 1), t["stops"]) if t["stops"] else t["ok"]
 
 
 def wid(name, r, font=None, fg=None, bg=None, halign=None, valign=None, z=2, extra="", transparent=True):
@@ -552,27 +606,20 @@ def pixw(name, r, z=2):
     return '<widget name="%s" %s alphatest="blend" scale="1" zPosition="%d"/>' % (name, rect(*r), z)
 
 
-def bar_segments_xml(prefix, y, x=1340, width=510):
-    pitch = float(width) / BAR_SEGS
-    out = []
-    for i in range(BAR_SEGS):
-        out.append('<widget name="%s_seg%d" position="%d,%d" size="%d,%d" backgroundColor="%s" '
-                   'cornerRadius="%d" transparent="0" zPosition="3"/>' % (
-                       prefix, i, s(x + i * pitch), s(y), max(2, s(pitch - 3)), s(10), seg_color(i), s(3)))
-    return "\n".join(out)
+def barw(name, r, bg, z=3):
+    """A one-row list used as a neon bar (the segments are pictures drawn by the list)."""
+    return ('<widget name="%s" %s backgroundColor="%s" backgroundColorSelected="%s" scrollbarMode="showNever" '
+            'transparent="0" zPosition="%d"/>' % (name, rect(*r), bg, bg, z))
 
 
 def sel_attr(kind, w, h):
     """selectionPixmap attribute (neon border) for a list. Pictures are pixel-exact (1920 wide
     desktops only) and exist only for the Modern themes; otherwise the solid color is used."""
     t = T()
-    if not t["modern"] or not t.get("sel_key") or s(w) != w:
+    p = asset_path("sel_" + kind)
+    if not t["modern"] or s(w) != w or not os.path.isfile(p):
         return ""
-    try:
-        data = assets().SEL[t["sel_key"]][kind]
-        return ' selectionPixmap="%s"' % write_png("/tmp/e2store_sel", "%s_%s" % (t["sel_key"], kind), data)
-    except Exception:
-        return ""
+    return ' selectionPixmap="%s"' % p
 
 
 def device_layout(y0, pic_h):
@@ -600,11 +647,9 @@ def device_xml(L, x=1340, width=510):
         wid("b_py", (x, L["py"][0], width, L["py"][1]), font=22, fg=c["second"], halign="center", valign="center"),
         wid("b_ip", (x, L["ip"][0], width, L["ip"][1]), font=24, fg=c["acc"], halign="center", valign="center"),
         wid("b_ram", (x, L["ram"][0], width, L["ram"][1]), font=24, fg=c["text"], halign="center", valign="center"),
-        box((x, L["ram_track"][0], width, 10), c["line"], 5, z=2),
-        bar_segments_xml("ram", L["ram_track"][0], x, width),
+        barw("ram_bar", (x, L["ram_track"][0], width, 10), c["card"]),
         wid("b_hdd", (x, L["hdd"][0], width, L["hdd"][1]), font=24, fg=c["text"], halign="center", valign="center"),
-        box((x, L["hdd_track"][0], width, 10), c["line"], 5, z=2),
-        bar_segments_xml("hdd", L["hdd_track"][0], x, width),
+        barw("hdd_bar", (x, L["hdd_track"][0], width, 10), c["card"]),
     ]
     return "\n".join(out)
 
@@ -663,8 +708,8 @@ class PanelBase(Screen):
         self.cats = []          # current view (all or search results)
         self.catIdx = 0
         self.query = ""
-        self.barOn = {}
-        self.barCol = {}
+        self.barKey = {}
+        self.segPix = None
         self.titleFrames = []
         self.glowFrames = []
         self.titleIdx = 0
@@ -679,8 +724,8 @@ class PanelBase(Screen):
         for name in ("title_glow", "title_img", "logo_glow", "logo_img", "box_pic"):
             self[name] = Pixmap()
         for prefix in ("ram", "hdd"):
-            for i in range(BAR_SEGS):
-                self["%s_seg%d" % (prefix, i)] = Label("")
+            self["%s_bar" % prefix] = MenuList([], content=eListboxPythonMultiContent)
+            self["%s_bar" % prefix].l.setItemHeight(s(10))
         self["key_red"] = Label(u"خروج | Exit")
         self["key_green"] = Label(u"تثبيت | Install")
         self["key_yellow"] = Label(u"بحث | Search")
@@ -705,11 +750,12 @@ class PanelBase(Screen):
                 "nextBouquet": self.nextCat, "prevBouquet": self.prevCat,
             }, -1)
 
-        self.statTimer = self.makeTimer(self.updateStats)
-        self.clockTimer = self.makeTimer(self.updateClock)
-        self.titleTimer = self.makeTimer(self.titleTick)
-        for tm in (self.statTimer, self.clockTimer, self.titleTimer):
+        self.tickCount = 0
+        self.tickTimer = self.makeTimer(self.onTick)        # مؤقت واحد: الساعة كل 2 ثانية والإحصاءات كل 4
+        self.titleTimer = self.makeTimer(self.titleTick)    # للحركة فقط (اختياري)
+        for tm in (self.tickTimer, self.titleTimer):
             self.onClose.append(tm.stop)
+        self.onClose.append(self.freeMemory)
         self.onExecBegin.append(self.resumeTitle)
         self.onExecEnd.append(self.pauseTitle)
         self.onLayoutFinish.append(self.start)
@@ -754,14 +800,29 @@ class PanelBase(Screen):
 
     # ----------------------------- بدء التشغيل -------------------------------
     def start(self):
+        self.loadSegments()
         self.loadTitle()
         self.showBoxInfo()
         self.updateStats()
         self.updateClock()
-        self.statTimer.start(3000, False)
-        self.clockTimer.start(2000, False)
+        self.tickTimer.start(2000, False)
         remove_old_cache()
         self.refresh()
+
+    def onTick(self):
+        self.tickCount += 1
+        self.updateClock()
+        if self.tickCount % 2 == 0:
+            self.updateStats()
+
+    def freeMemory(self):
+        """Release pictures and data as soon as the screen closes."""
+        self.segPix = None
+        self.titleFrames = []
+        self.glowFrames = []
+        self.allcats = []
+        self.cats = []
+        gc.collect()
 
     def updateClock(self):
         self["clock"].setText(time.strftime("%H:%M"))
@@ -769,38 +830,34 @@ class PanelBase(Screen):
 
     # ---------------------- اللوجو واسم البانل المتحرك -----------------------
     def loadTitle(self):
-        folder = "/tmp/e2store_title"
+        anim = _state["anim"]
         try:
-            a = assets()
-        except Exception:
-            return                                  # assets.py غير موجود: يبقى الاسم نصاً
-        try:                                        # اللوجو
-            logo = load_pix(folder, "logo", a.LOGO)
-            if logo:
+            logo = pix("logo")
+            if logo and self["logo_img"].instance:
                 self["logo_img"].instance.setPixmap(logo)
                 self["logo_img"].instance.show()
-            if self.t["modern"]:                    # توهج نابض بألوان اللوجو
-                glow = [load_pix(folder, "lg%d" % i, g) for i, g in enumerate(a.LOGO_GLOW)]
-                if logo and glow and all(glow):
-                    self["logo_glow"].instance.setPixmap(glow[0])
+            if self.t["modern"]:
+                names = ["lg%d" % i for i in range(5)] if anim else ["lg_static"]
+                glow = [pix(n) for n in names]
+                if glow and all(glow) and self["logo_glow"].instance:
+                    self["logo_glow"].instance.setPixmap(glow[min(3, len(glow) - 1)])
                     self["logo_glow"].instance.show()
-                    self.glowFrames = glow
-        except Exception:
-            self.glowFrames = []
-        if self.t["modern"] and self.t.get("title_set"):    # اسم البانل: موجة ألوان
-            try:
-                fam = a.TITLE[self.t["title_set"]]
-                glow = load_pix(folder, "glow", fam["glow"])
-                frames = [load_pix(folder, "f%02d" % i, d) for i, d in enumerate(fam["frames"])]
-                if glow and frames and all(frames):
-                    self["title_glow"].instance.setPixmap(glow)
+                    if anim:
+                        self.glowFrames = glow
+                frames = [pix("f%02d" % i) for i in range(12 if anim else 1)]
+                tglow = pix("tglow")
+                if tglow and frames and all(frames) and self["title_img"].instance:
+                    self["title_glow"].instance.setPixmap(tglow)
                     self["title_glow"].instance.show()
                     self["title_img"].instance.setPixmap(frames[0])
                     self["title_img"].instance.show()
                     self["title"].hide()
-                    self.titleFrames = frames
-            except Exception:
-                self.titleFrames = []
+                    if anim:
+                        self.titleFrames = frames
+        except Exception as e:
+            dlog_error("loadTitle: %s" % e)
+            self.titleFrames = []
+            self.glowFrames = []
         self.resumeTitle()
 
     def titleTick(self):
@@ -818,7 +875,7 @@ class PanelBase(Screen):
         self.titleTimer.stop()
 
     def resumeTitle(self):
-        if self.titleFrames or self.glowFrames:
+        if _state["anim"] and (self.titleFrames or self.glowFrames):
             self.titleTimer.start(90, False)
 
     # ----------------------------- تحميل الأوامر -----------------------------
@@ -861,14 +918,15 @@ class PanelBase(Screen):
         self.buildView(keepCat)
 
     def categoriesFor(self, keepCat=None):
-        """Applies the search query; returns nothing, fills self.cats / self.catIdx."""
+        """Applies the search query; fills self.cats (with "All" first) and self.catIdx."""
         if self.query:
             q = self.query.lower()
             hits = [it for c, items in self.allcats for it in items
                     if q in (u"%s %s %s %s" % (it["name"], it["author"], it["desc"], c)).lower()]
             self.cats = [(u"Search: %s" % self.query, hits)]
         else:
-            self.cats = self.allcats
+            everything = [it for _, items in self.allcats for it in items]
+            self.cats = ([("All", everything)] + list(self.allcats)) if everything else list(self.allcats)
         self.catIdx = 0
         if keepCat:
             for i, (n, _) in enumerate(self.cats):
@@ -911,26 +969,41 @@ class PanelBase(Screen):
         inst.setPixmap(ptr)
         inst.show()
 
+    def loadSegments(self):
+        n = BAR_SEGS if self.t["stops"] else 3
+        on = [pix("seg_on%d" % i) for i in range(n)]
+        self.segPix = {"off": pix("seg_off"), "on": on}
+        for prefix in ("ram", "hdd"):
+            lst = self["%s_bar" % prefix]
+            try:
+                lst.instance.setSelectionEnable(0)
+            except Exception:
+                pass
+
     def setBar(self, prefix, pct):
         """Neon LED bar: the first N gradient segments are lit (more colors appear as it fills).
-        In the Classic theme all lit segments take one color that follows the usage level."""
+        In the Classic theme all lit segments take one color that follows the usage level.
+        Drawn by ONE list widget per bar (no per-segment widgets)."""
+        pixs = self.segPix
+        if not pixs or not pixs["off"]:
+            return
         on = 0 if pct <= 0 else max(1, int(round(BAR_SEGS * min(pct, 100.0) / 100.0)))
-        if self.barOn.get(prefix) != on:
-            self.barOn[prefix] = on
-            for i in range(BAR_SEGS):
-                seg = self["%s_seg%d" % (prefix, i)]
-                if i < on:
-                    seg.show()
-                else:
-                    seg.hide()
-        if not self.t["stops"]:
-            col = self.t["ok"] if pct < 75 else (self.t["warn"] if pct < 90 else self.t["bad"])
-            if self.barCol.get(prefix) != col:
-                self.barCol[prefix] = col
-                for i in range(BAR_SEGS):
-                    inst = self["%s_seg%d" % (prefix, i)].instance
-                    if inst:
-                        inst.setBackgroundColor(parseColor(col))
+        level = -1 if self.t["stops"] else (0 if pct < 75 else (1 if pct < 90 else 2))
+        key = (on, level)
+        if self.barKey.get(prefix) == key:
+            return
+        self.barKey[prefix] = key
+        pitch = 510.0 / BAR_SEGS
+        row = [prefix]
+        for i in range(BAR_SEGS):
+            if i < on:
+                ptr = pixs["on"][i if level < 0 else level]
+            else:
+                ptr = pixs["off"]
+            if ptr:
+                row.append(MultiContentEntryPixmapAlphaBlend(
+                    pos=(s(i * pitch), 0), size=(max(2, s(pitch - 3)), s(10)), png=ptr, flags=BT_SCALE))
+        self["%s_bar" % prefix].setList([row])
 
     def updateStats(self):
         try:                                            # عنوان IP
@@ -1159,8 +1232,228 @@ class ListPanel(PanelBase):
         self.updateDetails()
 
 
+# --------------------------------- عرض الشبكة (Grid) -------------------------
+GRID_COLS, GRID_ROWS = 8, 2
+GRID_PER = GRID_COLS * GRID_ROWS
+TILE_W, TILE_H = 218, 170
+TILE_PITCH, TILE_YPITCH = 230, 184
+STAT_LABELS = ("SECTIONS", "IN SECTION", "TOTAL", "UPTIME")
+
+
+def get_uptime():
+    try:
+        return float(read_file("/proc/uptime").split()[0])
+    except Exception:
+        return 0.0
+
+
+def fmt_uptime(sec):
+    sec = int(sec)
+    d, h, m = sec // 86400, (sec % 86400) // 3600, (sec % 3600) // 60
+    return "%dd %dh" % (d, h) if d else "%dh %02dm" % (h, m)
+
+
+class GridPanel(PanelBase):
+    """Light Grid view: ONE list widget draws the 16 tiles of the page (pictures + text),
+    so the screen has only a handful of widgets."""
+    DEV = device_layout(125, 110)
+    PIC = (1340, DEV["pic"][0], 510, 110)
+    HINT = ("ARROWS : move     CH+ / CH- (or UP / DOWN at the edge) : sections     OK : install     "
+            "BLUE : refresh     MENU : settings")
+
+    def buildSkin(self):
+        c = tc()
+        parts = [
+            '<screen name="E2StoreGrid" position="0,0" size="%d,%d" flags="wfNoBorder" backgroundColor="%s">' % (_W, _H, c["bg"]),
+            header_xml(),
+            # --- منطقة العنوان والتفاصيل ---
+            wid("g_cap", (40, 135, 700, 34), font=24, fg=c["acc"], bg=c["bg"]),
+            wid("g_sec", (40, 170, 960, 76), font=56, fg="#FFFFFF", bg=c["bg"], valign="center"),
+            wid("g_name", (40, 252, 960, 46), font=36, fg=c["text"], bg=c["bg"], valign="center"),
+            wid("g_author", (40, 298, 960, 34), font=26, fg=c["second"], bg=c["bg"]),
+            wid("g_desc", (40, 336, 960, 96), font=30, fg=c["text"], bg=c["bg"], halign="right", valign="top"),
+            # --- بطاقة الأرقام ---
+            box((40, 446, 960, 74), c["card"], 18),
+        ]
+        for i in range(4):
+            x = 40 + i * 240
+            parts.append(wid("st%d_v" % i, (x, 450, 240, 40), font=36, fg="#FFFFFF", halign="center", valign="center"))
+            parts.append(wid("st%d_l" % i, (x, 490, 240, 26), font=18, fg=c["muted"], halign="center", valign="center"))
+            if i:
+                parts.append(box((x, 458, 2, 54), c["line"], z=2))
+        parts += [
+            # --- الشعار الكبير للقسم (حلقة جاهزة كصورة + أيقونة) ---
+            pixw("emb_bg", (1022, 142, 256, 256), z=1),
+            pixw("emb_ic", (1102, 222, 96, 96), z=3),
+            # --- معلومات الجهاز ---
+            box((1310, 125, 570, 395), c["card"], 24),
+            device_xml(self.DEV),
+            # --- كل البلاطات في قائمة واحدة ---
+            '<widget name="tiles" %s backgroundColor="%s" backgroundColorSelected="%s" foregroundColor="%s" '
+            'foregroundColorSelected="%s" scrollbarMode="showNever" transparent="0" zPosition="2"/>' % (
+                rect(40, 540, 1840, 368), c["bg"], c["bg"], c["text"], c["text"]),
+            wid("g_page", (40, 912, 800, 34), font=22, fg=c["muted"], bg=c["bg"]),
+            buttons_xml(),
+            '</screen>',
+        ]
+        return "\n".join(parts)
+
+    def createViewWidgets(self):
+        for n in ("g_cap", "g_sec", "g_name", "g_author", "g_desc", "g_page"):
+            self[n] = Label("")
+        for i in range(4):
+            self["st%d_v" % i] = Label("")
+            self["st%d_l" % i] = Label(STAT_LABELS[i])
+        self["emb_bg"] = Pixmap()
+        self["emb_ic"] = Pixmap()
+        self["tiles"] = MenuList([], content=eListboxPythonMultiContent)
+        self["tiles"].l.setFont(0, gFont("Regular", s(22)))
+        self["tiles"].l.setItemHeight(s(TILE_YPITCH))
+        self.sel = 0
+        self.tilePix = None
+        self.tileBgPix = None
+
+    # ------------------------------ بدء التشغيل ------------------------------
+    def start(self):
+        self.tilePix = pix("sel_tile")
+        self.tileBgPix = pix("sel_tile_bg")
+        try:
+            emb = pix("emblem")
+            if emb and self["emb_bg"].instance:
+                self["emb_bg"].instance.setPixmap(emb)
+                self["emb_bg"].instance.show()
+        except Exception:
+            pass
+        PanelBase.start(self)
+
+    def freeMemory(self):
+        self.tilePix = None
+        self.tileBgPix = None
+        PanelBase.freeMemory(self)
+
+    # --------------------------------- العرض ---------------------------------
+    def buildView(self, keepCat=None):
+        self.categoriesFor(keepCat)
+        self.sel = 0
+        self.refreshGrid()
+
+    def items(self):
+        return self.cats[self.catIdx][1] if self.cats else []
+
+    def currentItem(self):
+        items = self.items()
+        return items[self.sel] if 0 <= self.sel < len(items) else None
+
+    def buildRows(self):
+        items = self.items()
+        n = len(items)
+        start = (self.sel // GRID_PER) * GRID_PER
+        cat = self.cats[self.catIdx][0] if self.cats else ""
+        icon = get_icon(cat, 64) if cat else None
+        txt = hexint(self.t["text"])
+        rows = []
+        for r in range(GRID_ROWS):
+            row = [r]
+            for c in range(GRID_COLS):
+                idx = start + r * GRID_COLS + c
+                if idx >= n:
+                    break
+                x = s(c * TILE_PITCH)
+                bgp = self.tilePix if idx == self.sel else self.tileBgPix
+                if bgp:
+                    row.append(MultiContentEntryPixmapAlphaBlend(
+                        pos=(x, 0), size=(s(TILE_W), s(TILE_H)), png=bgp, flags=BT_SCALE))
+                if icon:
+                    row.append(MultiContentEntryPixmapAlphaBlend(
+                        pos=(x + s(77), s(22)), size=(s(64), s(64)), png=icon, flags=BT_SCALE))
+                row.append(MultiContentEntryText(
+                    pos=(x + s(8), s(98)), size=(s(TILE_W - 16), s(66)), font=0,
+                    flags=RT_HALIGN_CENTER | RT_VALIGN_TOP | RT_WRAP, text=items[idx]["name"],
+                    color=txt, color_sel=txt))
+            rows.append(row)
+        self["tiles"].setList(rows)
+        self["tiles"].moveToIndex(0)
+
+    def refreshGrid(self):
+        n = len(self.items())
+        self.sel = min(self.sel, max(n - 1, 0))
+        self.buildRows()
+        self.updateHero()
+
+    def updateHero(self):
+        items = self.items()
+        n = len(items)
+        cat = self.cats[self.catIdx][0] if self.cats else ""
+        self["g_cap"].setText("SECTION %02d / %02d" % (self.catIdx + 1, len(self.cats)) if self.cats else "")
+        self["g_sec"].setText(cat.upper())
+        it = self.currentItem()
+        if it:
+            self["g_name"].setText(it["name"])
+            self["g_author"].setText((u"by " + it["author"]) if it["author"] else it["cat"])
+            self["g_desc"].setText(it["desc"] or u"—")
+        else:
+            self["g_name"].setText("")
+            self["g_author"].setText("")
+            self["g_desc"].setText(u"لا توجد نتائج | No results" if self.query else "")
+        pages = max(1, (n + GRID_PER - 1) // GRID_PER)
+        self["g_page"].setText("PAGE %d/%d     %d plugins" % (self.sel // GRID_PER + 1, pages, n) if n else "")
+        try:
+            big = get_icon(cat, 96) if cat else None
+            if big and self["emb_ic"].instance:
+                self["emb_ic"].instance.setPixmap(big)
+                self["emb_ic"].instance.show()
+        except Exception:
+            pass
+        total = sum(len(i) for _, i in self.allcats)
+        self["st0_v"].setText(str(len(self.allcats)))
+        self["st1_v"].setText(str(n))
+        self["st2_v"].setText(str(total))
+        self["st3_v"].setText(fmt_uptime(get_uptime()))
+
+    def extraStats(self):
+        try:
+            self["st3_v"].setText(fmt_uptime(get_uptime()))
+        except Exception:
+            pass
+
+    # -------------------------------- التنقل ---------------------------------
+    def onCatChanged(self):
+        self.sel = 0
+        self.refreshGrid()
+
+    def moveSel(self, delta):
+        n = len(self.items())
+        if not n:
+            return
+        new = min(max(self.sel + delta, 0), n - 1)
+        if new == self.sel:
+            return
+        self.sel = new
+        self.buildRows()
+        self.updateHero()
+
+    def keyLeft(self):
+        self.moveSel(-1)
+
+    def keyRight(self):
+        self.moveSel(1)
+
+    def keyUp(self):
+        if self.sel < GRID_COLS and len(self.cats) > 1:         # أعلى صف: القسم السابق
+            self.moveCat(-1)
+        else:
+            self.moveSel(-GRID_COLS)
+
+    def keyDown(self):
+        n = len(self.items())
+        if n and self.sel // GRID_COLS >= (n - 1) // GRID_COLS and len(self.cats) > 1:   # آخر صف: القسم التالي
+            self.moveCat(1)
+        else:
+            self.moveSel(GRID_COLS)
+
+
 # --------------------------------- شاشة الإعدادات -----------------------------
-SETTINGS_ROWS = ("style", "color", "update")
+SETTINGS_ROWS = ("view", "style", "color", "anim", "update")
 
 
 def settings_skin():
@@ -1170,17 +1463,17 @@ def settings_skin():
         box((0, 0, 1920, 110), c["card"]),
         '<eLabel position="0,%d" size="%d,%d" backgroundColor="%s" zPosition="1"/>' % (s(106), _W, max(2, s(4)), c["hdr"]),
         wid("s_title", (60, 20, 1000, 70), font=46, fg="#FFFFFF", valign="center"),
-        box((360, 150, 1200, 760), c["card"], 24),
+        box((360, 150, 1200, 790), c["card"], 24),
         '<widget name="rows" %s backgroundColor="%s" backgroundColorSelected="%s" foregroundColor="%s" '
         'foregroundColorSelected="#FFFFFF" scrollbarMode="showNever" transparent="0" zPosition="2"/>' % (
-            rect(390, 180, 1140, 400), c["card"], c["sel"], c["text"]),
-        wid("s_prev", (390, 610, 1140, 40), font=26, fg=c["acc"], valign="center"),
+            rect(390, 175, 1140, 500), c["card"], c["sel"], c["text"]),
+        wid("s_prev", (390, 690, 1140, 40), font=26, fg=c["acc"], valign="center"),
     ]
     for i in range(5):
         parts.append('<widget name="sw%d" %s backgroundColor="%s" cornerRadius="%d" transparent="0" zPosition="2"/>' % (
-            i, rect(400 + i * 220, 665, 190, 90), c["line"], s(14)))
+            i, rect(400 + i * 220, 740, 190, 80), c["line"], s(14)))
     parts += [
-        wid("s_note", (390, 780, 1140, 100), font=24, fg=c["muted"], valign="top"),
+        wid("s_note", (390, 836, 1140, 90), font=22, fg=c["muted"], valign="top"),
         '<widget name="key_red" %s font="Regular;%d" foregroundColor="#FFFFFF" backgroundColor="%s" cornerRadius="%d" '
         'halign="center" valign="center" zPosition="2"/>' % (rect(500, 955, 440, 66), s(30), c["red"], s(16)),
         '<widget name="key_green" %s font="Regular;%d" foregroundColor="#FFFFFF" backgroundColor="%s" cornerRadius="%d" '
@@ -1197,7 +1490,9 @@ class SettingsScreen(Screen):
         self.skin = settings_skin()
         Screen.__init__(self, session)
         st = load_settings()
-        self.orig = st["theme"]
+        self.orig = (st["view"], st["theme"], st["anim"])
+        self.view = st["view"]
+        self.anim = st["anim"]
         self.style = "classic" if st["theme"] == "classic" else "modern"
         self.color = st["theme"] if st["theme"] != "classic" else MODERN_ORDER[0]
 
@@ -1208,7 +1503,7 @@ class SettingsScreen(Screen):
         self["s_prev"] = Label("")
         for i in range(5):
             self["sw%d" % i] = Label("")
-        self["s_note"] = Label(u"التغييرات تُطبَّق بعد الحفظ وتُعيد فتح البانل تلقائياً.\n"
+        self["s_note"] = Label(u"Animation (الاسم واللوجو المتحركان) أجمل لكنه يستهلك معالجاً وذاكرة أكثر - الأفضل إيقافه للأداء الأخف.\n"
                                u"Changes apply after saving; the panel reopens by itself.")
         self["key_red"] = Label(u"إلغاء | Cancel")
         self["key_green"] = Label(u"حفظ وتطبيق | Save & Apply")
@@ -1227,13 +1522,15 @@ class SettingsScreen(Screen):
         txt, mut, acc = hexint(self.t["text"]), hexint(self.t["muted"]), hexint(self.t["accent"])
         modern = self.style == "modern"
         values = (
+            ("View", "List" if self.view == "list" else "Grid", True),
             ("Style", "Classic" if self.style == "classic" else "Modern", True),
             ("Color", THEMES[self.color]["name"] if modern else u"— (Modern only)", modern),
+            ("Animation", "On" if self.anim else "Off", True),
             ("Update panel", u"Run  \u25b6", True),
         )
         rows = []
         for i, (name, value, active) in enumerate(values):
-            arrows = ("<  %s  >" % value) if (active and i < 2) else value
+            arrows = ("<  %s  >" % value) if (active and i < 4) else value
             rows.append([name,
                          MultiContentEntryText(pos=(s(30), 0), size=(s(500), s(100)), font=0,
                                                flags=RT_HALIGN_LEFT | RT_VALIGN_CENTER, text=name,
@@ -1255,11 +1552,15 @@ class SettingsScreen(Screen):
 
     def change(self, step):
         row = self.current()
-        if row == "style":
+        if row == "view":
+            self.view = "grid" if self.view == "list" else "list"
+        elif row == "style":
             self.style = "modern" if self.style == "classic" else "classic"
         elif row == "color" and self.style == "modern":
             i = (MODERN_ORDER.index(self.color) + step) % len(MODERN_ORDER)
             self.color = MODERN_ORDER[i]
+        elif row == "anim":
+            self.anim = not self.anim
         self.refreshAll()
 
     def left(self):
@@ -1289,8 +1590,8 @@ class SettingsScreen(Screen):
 
     def save(self):
         theme = self.themeKey()
-        changed = theme != self.orig
-        save_settings("list", theme)
+        changed = (self.view, theme, self.anim) != self.orig
+        save_settings(self.view, theme, self.anim)
         self.close(changed)
 
     def cancel(self):
@@ -1579,9 +1880,50 @@ class RunScreen(Screen):
 
 
 # --------------------------------- التسجيل -----------------------------------
+_relaunch = {}
+
+
+def onPanelClosed(session, result=None):
+    if result == "reopen":
+        # نترك للواجهة لحظة لتحرير الشاشة القديمة قبل بناء الجديدة (يخفف ذروة الذاكرة)
+        gc.collect()
+        tm = eTimer()
+        try:
+            tm.callback.append(lambda: launch(session))
+        except AttributeError:
+            _relaunch["conn"] = tm.timeout.connect(lambda: launch(session))
+        _relaunch["timer"] = tm
+        tm.start(350, True)
+    else:
+        cleanup_assets()                    # لا يبقى أي شيء في /tmp عند الخروج
+
+
 def launch(session):
+    import traceback
     load_settings()
-    session.openWithCallback(lambda result=None: launch(session) if result == "reopen" else None, ListPanel)
+    order = [GridPanel, ListPanel] if _state["view"] == "grid" else [ListPanel]
+    opened = None
+    for cls in order:
+        prep_assets("grid" if cls is GridPanel else "list", _state["theme"], _state["anim"])
+        try:
+            session.openWithCallback(lambda result=None: onPanelClosed(session, result), cls)
+            opened = cls
+            break
+        except Exception:
+            dlog_error("%s failed:\n%s" % (cls.__name__, traceback.format_exc()))
+            if cls is GridPanel:
+                save_settings("list", _state["theme"], _state["anim"])      # لا نكرر العطل في كل مرة
+                _state["view"] = "list"
+    try:
+        if opened is None:
+            cleanup_assets()
+            session.open(MessageBox, u"تعذّر تشغيل E2 Store - راجع /tmp/e2store_error.log\nE2 Store could not start.",
+                         MessageBox.TYPE_ERROR, timeout=10)
+        elif opened is not order[0]:
+            session.open(MessageBox, u"تعذّر فتح عرض Grid فعُدنا إلى List.\nGrid view failed - using List.\n(/tmp/e2store_error.log)",
+                         MessageBox.TYPE_INFO, timeout=8)
+    except Exception as e:
+        dlog_error("message box failed: %s" % e)
 
 
 def main(session, **kwargs):
