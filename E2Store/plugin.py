@@ -145,7 +145,7 @@ def load_settings():
         pass
     view = data.get("view", DEFAULT_SETTINGS["view"])
     theme = data.get("theme", DEFAULT_SETTINGS["theme"])
-    _state["view"] = view if view in ("list", "grid") else DEFAULT_SETTINGS["view"]
+    _state["view"] = "list"                 # Grid removed: List only
     _state["theme"] = theme if theme in THEMES else DEFAULT_SETTINGS["theme"]
     return _state
 
@@ -437,28 +437,18 @@ def assets():
     return _assets_mod[0]
 
 
-_written = {}   # path -> size of the picture already written during this run
-
-
 def write_png(folder, name, data):
-    """Writes a base64 PNG to /tmp once per run. /tmp lives in RAM on the receiver, so rewriting
-    every picture each time the panel opens was adding memory on every colour / view change.
-    A plugin update restarts enigma2, so the run-level cache can never serve a stale picture."""
-    path = os.path.join(folder, name + ".png")
-    if _written.get(path) == len(data) and os.path.isfile(path):
-        return path
+    """Writes a base64 PNG to /tmp (always rewritten, so updates never show stale pictures)."""
     os.makedirs(folder, exist_ok=True)
-    tmp = path + ".tmp"
-    with open(tmp, "wb") as f:
+    path = os.path.join(folder, name + ".png")
+    with open(path, "wb") as f:
         f.write(base64.b64decode(data))
-    os.rename(tmp, path)
-    _written[path] = len(data)
     return path
 
 
 def load_pix(folder, name, data):
     try:
-        return LoadPixmap(write_png(folder, name, data), cached=True)
+        return LoadPixmap(write_png(folder, name, data))
     except Exception:
         return None
 
@@ -503,7 +493,7 @@ def get_icon(cat_name, size=48):
         try:
             own = os.path.join(PLUGIN_DIR, "icons", key + ".png")
             if os.path.isfile(own):
-                ptr = LoadPixmap(own, cached=True)
+                ptr = LoadPixmap(own)
             else:
                 data = getattr(assets(), "ICONS%d" % size).get(key)
                 if data:
@@ -829,7 +819,7 @@ class PanelBase(Screen):
 
     def resumeTitle(self):
         if self.titleFrames or self.glowFrames:
-            self.titleTimer.start(200, False)
+            self.titleTimer.start(90, False)
 
     # ----------------------------- تحميل الأوامر -----------------------------
     def refresh(self):
@@ -878,8 +868,7 @@ class PanelBase(Screen):
                     if q in (u"%s %s %s %s" % (it["name"], it["author"], it["desc"], c)).lower()]
             self.cats = [(u"Search: %s" % self.query, hits)]
         else:
-            everything = [it for _, items in self.allcats for it in items]
-            self.cats = ([(u"All", everything)] + list(self.allcats)) if everything else list(self.allcats)
+            self.cats = self.allcats
         self.catIdx = 0
         if keepCat:
             for i, (n, _) in enumerate(self.cats):
@@ -905,7 +894,7 @@ class PanelBase(Screen):
 
     def setBoxPicture(self, path):
         inst = self["box_pic"].instance
-        ptr = LoadPixmap(path, cached=True)
+        ptr = LoadPixmap(path)
         if not inst or not ptr:
             return
         px, py, pw, ph = self.PIC
@@ -1024,14 +1013,7 @@ class PanelBase(Screen):
 
     def settingsDone(self, changed=False):
         if changed:
-            self.reopenPanel()              # يفتح البانل الجديد بالعرض والثيم الجديدين
-
-    def reopenPanel(self):
-        cls = GridPanel if _state["view"] == "grid" else ListPanel
-        self.session.openWithCallback(self.closeAfterReopen, cls)
-
-    def closeAfterReopen(self, result=None):
-        self.close()
+            self.close("reopen")            # يعيد فتح البانل بالعرض والثيم الجديدين
 
     def askUpdate(self):
         self.session.openWithCallback(
@@ -1177,251 +1159,8 @@ class ListPanel(PanelBase):
         self.updateDetails()
 
 
-# --------------------------------- عرض الشبكة (Grid) -------------------------
-GRID_COLS, GRID_ROWS = 8, 2
-GRID_RADIUS = 0          # الزوايا الدائرية في Grid تُحمِّل مسرّع الرسم (TDE) - 0 = بدون زوايا
-GRID_PER = GRID_COLS * GRID_ROWS
-TILE_W, TILE_H = 218, 170
-TILE_X0, TILE_PITCH = 40, 230
-TILE_Y0, TILE_YPITCH = 540, 184
-STAT_LABELS = ("SECTIONS", "IN SECTION", "TOTAL", "UPTIME")
-
-
-def get_uptime():
-    try:
-        return float(read_file("/proc/uptime").split()[0])
-    except Exception:
-        return 0.0
-
-
-def fmt_uptime(sec):
-    sec = int(sec)
-    d, h, m = sec // 86400, (sec % 86400) // 3600, (sec % 3600) // 60
-    return "%dd %dh" % (d, h) if d else "%dh %02dm" % (h, m)
-
-
-class GridPanel(PanelBase):
-    DEV = device_layout(125, 110)
-    PIC = (1340, DEV["pic"][0], 510, 110)
-    HINT = ("ARROWS : move     CH+ / CH- (or UP / DOWN at the edge) : sections     OK : install     "
-            "BLUE : refresh     MENU : settings")
-
-    def buildSkin(self):
-        c = tc()
-        parts = [
-            '<screen name="E2StoreGrid" position="0,0" size="%d,%d" flags="wfNoBorder" backgroundColor="%s">' % (_W, _H, c["bg"]),
-            header_xml(),
-            # --- منطقة العنوان والتفاصيل ---
-            wid("g_cap", (40, 135, 700, 34), font=24, fg=c["acc"], bg=c["bg"]),
-            wid("g_sec", (40, 170, 960, 76), font=56, fg="#FFFFFF", bg=c["bg"], valign="center"),
-            wid("g_name", (40, 252, 960, 46), font=36, fg=c["text"], bg=c["bg"], valign="center"),
-            wid("g_author", (40, 298, 960, 34), font=26, fg=c["second"], bg=c["bg"]),
-            wid("g_desc", (40, 336, 960, 96), font=30, fg=c["text"], bg=c["bg"], halign="right", valign="top"),
-            # --- بطاقة الأرقام ---
-            box((40, 446, 960, 74), c["card"], 18),
-        ]
-        for i in range(4):
-            x = 40 + i * 240
-            parts.append(wid("st%d_v" % i, (x, 450, 240, 40), font=36, fg="#FFFFFF", halign="center", valign="center"))
-            parts.append(wid("st%d_l" % i, (x, 490, 240, 26), font=18, fg=c["muted"], halign="center", valign="center"))
-            if i:
-                parts.append(box((x, 458, 2, 54), c["line"], z=2))
-        parts += [
-            # --- الشعار الكبير للقسم ---
-            box((1022, 142, 256, 256), c["acc"], 128),
-            box((1030, 150, 240, 240), c["card2"], 120, z=1),
-            pixw("emb_ic", (1102, 222, 96, 96), z=3),
-            # --- معلومات الجهاز ---
-            box((1310, 125, 570, 395), c["card"], 24),
-            device_xml(self.DEV),
-        ]
-        # --- البلاطات ---
-        for i in range(GRID_PER):
-            col, row = i % GRID_COLS, i // GRID_COLS
-            x, y = TILE_X0 + col * TILE_PITCH, TILE_Y0 + row * TILE_YPITCH
-            parts.append('<widget name="t%d_bg" %s backgroundColor="%s" cornerRadius="%d" transparent="0" zPosition="0"/>' % (
-                i, rect(x, y, TILE_W, TILE_H), c["card"], s(GRID_RADIUS)))
-            parts.append(pixw("t%d_ic" % i, (x + 77, y + 22, 64, 64), z=2))
-            parts.append(wid("t%d_nm" % i, (x + 8, y + 98, TILE_W - 16, 66), font=22, fg=c["text"],
-                             halign="center", valign="top"))
-        parts += [
-            pixw("sel_frame", (TILE_X0, TILE_Y0, TILE_W, TILE_H), z=1),
-            '<widget name="sel_box" %s backgroundColor="%s" cornerRadius="%d" transparent="0" zPosition="1"/>' % (
-                rect(TILE_X0, TILE_Y0, TILE_W, TILE_H), c["sel"], s(GRID_RADIUS)),
-            wid("g_page", (40, 902, 800, 34), font=22, fg=c["muted"], bg=c["bg"]),
-            buttons_xml(),
-            '</screen>',
-        ]
-        return "\n".join(parts)
-
-    def createViewWidgets(self):
-        for n in ("g_cap", "g_sec", "g_name", "g_author", "g_desc", "g_page"):
-            self[n] = Label("")
-        for i in range(4):
-            self["st%d_v" % i] = Label("")
-            self["st%d_l" % i] = Label(STAT_LABELS[i])
-        self["emb_ic"] = Pixmap()
-        for i in range(GRID_PER):
-            self["t%d_bg" % i] = Label("")
-            self["t%d_ic" % i] = Pixmap()
-            self["t%d_nm" % i] = Label("")
-        self["sel_frame"] = Pixmap()
-        self["sel_box"] = Label("")
-        self.sel = 0
-        self.useFrame = False
-        self.frameShown = False
-
-    # ------------------------------ بدء التشغيل ------------------------------
-    def start(self):
-        self.prepareFrame()
-        PanelBase.start(self)
-
-    def prepareFrame(self):
-        """Neon frame picture for the selected tile (Modern themes, 1920 wide desktops)."""
-        self.useFrame = False
-        try:
-            if self.t["modern"] and self.t.get("sel_key") and s(TILE_W) == TILE_W:
-                data = assets().SEL[self.t["sel_key"]]["tile"]
-                ptr = load_pix("/tmp/e2store_sel", "%s_tile" % self.t["sel_key"], data)
-                if ptr and self["sel_frame"].instance:
-                    self["sel_frame"].instance.setPixmap(ptr)
-                    self.useFrame = True
-        except Exception:
-            self.useFrame = False
-
-    # --------------------------------- العرض ---------------------------------
-    def buildView(self, keepCat=None):
-        self.categoriesFor(keepCat)
-        self.sel = 0
-        self.refreshGrid()
-
-    def items(self):
-        return self.cats[self.catIdx][1] if self.cats else []
-
-    def currentItem(self):
-        items = self.items()
-        return items[self.sel] if 0 <= self.sel < len(items) else None
-
-    def refreshGrid(self):
-        items = self.items()
-        n = len(items)
-        self.sel = min(self.sel, max(n - 1, 0))
-        start = (self.sel // GRID_PER) * GRID_PER
-        cat = self.cats[self.catIdx][0] if self.cats else ""
-        icon = get_icon(cat, 64) if cat else None
-        for i in range(GRID_PER):
-            idx = start + i
-            bg, ic, nm = self["t%d_bg" % i], self["t%d_ic" % i], self["t%d_nm" % i]
-            if idx < n:
-                nm.setText(items[idx]["name"])
-                bg.show()
-                nm.show()
-                if ic.instance:
-                    if icon:
-                        ic.instance.setPixmap(icon)
-                    ic.instance.show()
-            else:
-                bg.hide()
-                nm.hide()
-                if ic.instance:
-                    ic.instance.hide()
-        self.moveSelection()
-        self.updateHero()
-
-    def moveSelection(self):
-        widget = self["sel_frame"] if self.useFrame else self["sel_box"]
-        other = self["sel_box"] if self.useFrame else self["sel_frame"]
-        if other.instance:
-            other.instance.hide()
-        inst = widget.instance
-        if not inst:
-            return
-        if not self.items():
-            inst.hide()
-            return
-        k = self.sel % GRID_PER
-        col, row = k % GRID_COLS, k // GRID_COLS
-        inst.move(ePoint(s(TILE_X0 + col * TILE_PITCH), s(TILE_Y0 + row * TILE_YPITCH)))
-        inst.show()
-
-    def updateHero(self):
-        items = self.items()
-        n = len(items)
-        cat = self.cats[self.catIdx][0] if self.cats else ""
-        self["g_cap"].setText("SECTION %02d / %02d" % (self.catIdx + 1, len(self.cats)) if self.cats else "")
-        self["g_sec"].setText(cat.upper())
-        it = self.currentItem()
-        if it:
-            self["g_name"].setText(it["name"])
-            self["g_author"].setText((u"by " + it["author"]) if it["author"] else it["cat"])
-            self["g_desc"].setText(it["desc"] or u"—")
-        else:
-            self["g_name"].setText("")
-            self["g_author"].setText("")
-            self["g_desc"].setText(u"لا توجد نتائج | No results" if self.query else "")
-        pages = max(1, (n + GRID_PER - 1) // GRID_PER)
-        self["g_page"].setText("PAGE %d/%d     %d plugins" % (self.sel // GRID_PER + 1, pages, n) if n else "")
-        try:
-            big = get_icon(cat, 96) if cat else None
-            if big and self["emb_ic"].instance:
-                self["emb_ic"].instance.setPixmap(big)
-                self["emb_ic"].instance.show()
-        except Exception:
-            pass
-        total = sum(len(i) for _, i in self.allcats)
-        self["st0_v"].setText(str(len(self.allcats)))
-        self["st1_v"].setText(str(n))
-        self["st2_v"].setText(str(total))
-        self["st3_v"].setText(fmt_uptime(get_uptime()))
-
-    def extraStats(self):
-        try:
-            self["st3_v"].setText(fmt_uptime(get_uptime()))
-        except Exception:
-            pass
-
-    # -------------------------------- التنقل ---------------------------------
-    def onCatChanged(self):
-        self.sel = 0
-        self.refreshGrid()
-
-    def moveSel(self, delta):
-        n = len(self.items())
-        if not n:
-            return
-        new = min(max(self.sel + delta, 0), n - 1)
-        if new == self.sel:
-            return
-        old_page = self.sel // GRID_PER
-        self.sel = new
-        if new // GRID_PER != old_page:
-            self.refreshGrid()
-        else:
-            self.moveSelection()
-            self.updateHero()
-
-    def keyLeft(self):
-        self.moveSel(-1)
-
-    def keyRight(self):
-        self.moveSel(1)
-
-    def keyUp(self):
-        if self.sel < GRID_COLS and len(self.cats) > 1:         # أعلى صف: القسم السابق
-            self.moveCat(-1)
-        else:
-            self.moveSel(-GRID_COLS)
-
-    def keyDown(self):
-        n = len(self.items())
-        if n and self.sel // GRID_COLS >= (n - 1) // GRID_COLS and len(self.cats) > 1:   # آخر صف: القسم التالي
-            self.moveCat(1)
-        else:
-            self.moveSel(GRID_COLS)
-
-
 # --------------------------------- شاشة الإعدادات -----------------------------
-SETTINGS_ROWS = ("view", "style", "color", "update")
+SETTINGS_ROWS = ("style", "color", "update")
 
 
 def settings_skin():
@@ -1458,8 +1197,7 @@ class SettingsScreen(Screen):
         self.skin = settings_skin()
         Screen.__init__(self, session)
         st = load_settings()
-        self.orig = (st["view"], st["theme"])
-        self.view = st["view"]
+        self.orig = st["theme"]
         self.style = "classic" if st["theme"] == "classic" else "modern"
         self.color = st["theme"] if st["theme"] != "classic" else MODERN_ORDER[0]
 
@@ -1489,14 +1227,13 @@ class SettingsScreen(Screen):
         txt, mut, acc = hexint(self.t["text"]), hexint(self.t["muted"]), hexint(self.t["accent"])
         modern = self.style == "modern"
         values = (
-            ("View", "List" if self.view == "list" else "Grid", True),
             ("Style", "Classic" if self.style == "classic" else "Modern", True),
             ("Color", THEMES[self.color]["name"] if modern else u"— (Modern only)", modern),
             ("Update panel", u"Run  \u25b6", True),
         )
         rows = []
         for i, (name, value, active) in enumerate(values):
-            arrows = ("<  %s  >" % value) if (active and i < 3) else value
+            arrows = ("<  %s  >" % value) if (active and i < 2) else value
             rows.append([name,
                          MultiContentEntryText(pos=(s(30), 0), size=(s(500), s(100)), font=0,
                                                flags=RT_HALIGN_LEFT | RT_VALIGN_CENTER, text=name,
@@ -1518,9 +1255,7 @@ class SettingsScreen(Screen):
 
     def change(self, step):
         row = self.current()
-        if row == "view":
-            self.view = "grid" if self.view == "list" else "list"
-        elif row == "style":
+        if row == "style":
             self.style = "modern" if self.style == "classic" else "classic"
         elif row == "color" and self.style == "modern":
             i = (MODERN_ORDER.index(self.color) + step) % len(MODERN_ORDER)
@@ -1554,8 +1289,8 @@ class SettingsScreen(Screen):
 
     def save(self):
         theme = self.themeKey()
-        changed = (self.view, theme) != self.orig
-        save_settings(self.view, theme)
+        changed = theme != self.orig
+        save_settings("list", theme)
         self.close(changed)
 
     def cancel(self):
@@ -1846,8 +1581,7 @@ class RunScreen(Screen):
 # --------------------------------- التسجيل -----------------------------------
 def launch(session):
     load_settings()
-    cls = GridPanel if _state["view"] == "grid" else ListPanel
-    session.open(cls)
+    session.openWithCallback(lambda result=None: launch(session) if result == "reopen" else None, ListPanel)
 
 
 def main(session, **kwargs):
