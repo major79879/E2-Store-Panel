@@ -8,6 +8,7 @@ import os
 import re
 import ssl
 import struct
+import sys
 import time
 from urllib.request import Request, urlopen
 
@@ -475,6 +476,7 @@ def main_skin():
   <widget name="b_model" %(r_bmodel)s font="Regular;%(f30)d" foregroundColor="#FFFFFF" backgroundColor="%(card)s" transparent="1" halign="center" valign="center" zPosition="2"/>
   <widget name="box_pic" %(r_bpic)s alphatest="blend" scale="1" zPosition="2"/>
   <widget name="b_image" %(r_bimage)s font="Regular;%(f22)d" foregroundColor="%(muted)s" backgroundColor="%(card)s" transparent="1" halign="center" valign="center" zPosition="2"/>
+  <widget name="b_py" %(r_bpy)s font="Regular;%(f22)d" foregroundColor="#A78BFA" backgroundColor="%(card)s" transparent="1" halign="center" valign="center" zPosition="2"/>
   <widget name="b_ip" %(r_bip)s font="Regular;%(f24)d" foregroundColor="%(cyan)s" backgroundColor="%(card)s" transparent="1" halign="center" valign="center" zPosition="2"/>
   <widget name="b_ram" %(r_bram)s font="Regular;%(f24)d" foregroundColor="%(text)s" backgroundColor="%(card)s" transparent="1" halign="center" valign="center" zPosition="2"/>
   <eLabel %(r_rtrack)s backgroundColor="%(line)s" cornerRadius="%(cr3)d" zPosition="2"/>
@@ -491,7 +493,7 @@ def main_skin():
         W=_W, H=_H, bg=C_BG, card=C_CARD, line=C_LINE, text=C_TEXT, muted=C_MUTED, acc=C_ACCENT,
         red=C_RED, green=C_GREEN, yellow=C_YELLOW, cyan=C_CYAN, mint=C_MINT, sel=C_SEL,
         selcats=sel_pixmap_attr(390, 84), selitems=sel_pixmap_attr(770, 100),
-        segs=bar_segments_xml("ram", 832) + "\n" + bar_segments_xml("hdd", 888),
+        segs=bar_segments_xml("ram", 846) + "\n" + bar_segments_xml("hdd", 898),
         r_timg=rect(146, 13, 440, 84), r_logo=rect(34, 5, 100, 100),
         hh=s(110), hl=s(106), lw=max(2, s(4)), cr=s(24), cr2=s(16), cr3=s(5),
         f22=s(22), f24=s(24), f26=s(26), f28=s(28), f30=s(30), f32=s(32), f38=s(38), f46=s(46),
@@ -508,10 +510,10 @@ def main_skin():
         r_ddeschd=rect(1340, 364, 510, 34), r_ddesc=rect(1340, 402, 510, 150),
         # --- البطاقة السفلية: معلومات الجهاز ---
         r_card4=rect(1310, 585, 570, 350),
-        r_bmodel=rect(1340, 598, 510, 40), r_bpic=rect(1340, 640, 510, 90),
-        r_bimage=rect(1340, 732, 510, 30), r_bip=rect(1340, 762, 510, 30),
-        r_bram=rect(1340, 800, 510, 30), r_rtrack=rect(1340, 832, 510, 10),
-        r_bhdd=rect(1340, 856, 510, 30), r_htrack=rect(1340, 888, 510, 10),
+        r_bmodel=rect(1340, 598, 510, 40), r_bpic=rect(1340, 640, 510, 80),
+        r_bimage=rect(1340, 722, 510, 28), r_bpy=rect(1340, 750, 510, 28), r_bip=rect(1340, 778, 510, 30),
+        r_bram=rect(1340, 814, 510, 30), r_rtrack=rect(1340, 846, 510, 10),
+        r_bhdd=rect(1340, 866, 510, 30), r_htrack=rect(1340, 898, 510, 10),
         r_b1=rect(40, 955, 440, 66), r_b2=rect(500, 955, 440, 66),
         r_b3=rect(960, 955, 440, 66), r_b4=rect(1420, 955, 460, 66),
         r_hint=rect(40, 1030, 1840, 40),
@@ -551,6 +553,7 @@ class E2Store(Screen):
         self["b_model"] = Label("")
         self["box_pic"] = Pixmap()
         self["b_image"] = Label("")
+        self["b_py"] = Label("")
         self["b_ip"] = Label("")
         self["b_ram"] = Label("")
         for prefix in ("ram", "hdd"):
@@ -721,6 +724,7 @@ class E2Store(Screen):
             title, image, ids = "Enigma2", "", []
         self["b_model"].setText(title)
         self["b_image"].setText(image)
+        self["b_py"].setText("Python %d.%d.%d" % tuple(sys.version_info[:3]))
         try:
             path = find_box_image(ids)
             if path:
@@ -733,7 +737,7 @@ class E2Store(Screen):
         ptr = LoadPixmap(path)
         if not inst or not ptr:
             return
-        maxw, maxh = s(510), s(90)
+        maxw, maxh = s(510), s(80)
         size = png_size(path) or (maxw, maxh)
         ratio = min(maxw / float(size[0]), maxh / float(size[1]))
         w, h = max(1, int(size[0] * ratio)), max(1, int(size[1] * ratio))
