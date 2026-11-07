@@ -10,7 +10,7 @@ rm -rf "$TMP"
 mkdir -p "$TMP"
 
 # 1) حمّل كل الملفات أولاً - لا نلمس النسخة المثبتة إلا بعد نجاح التحميل كاملاً
-for f in __init__.py lstparser.py plugin.py plugin.png; do
+for f in __init__.py lstparser.py plugin.py assets.py plugin.png; do
     echo "Downloading $f ..."
     # __init__.py فارغ بطبيعته، لذلك لا نفحص حجمه
     if ! wget -q --no-check-certificate "$REPO/$f" -O "$TMP/$f" || { [ "$f" != "__init__.py" ] && [ ! -s "$TMP/$f" ]; }; then
