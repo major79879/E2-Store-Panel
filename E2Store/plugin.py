@@ -437,18 +437,28 @@ def assets():
     return _assets_mod[0]
 
 
+_written = {}   # path -> size of the picture already written during this run
+
+
 def write_png(folder, name, data):
-    """Writes a base64 PNG to /tmp (always rewritten, so updates never show stale pictures)."""
-    os.makedirs(folder, exist_ok=True)
+    """Writes a base64 PNG to /tmp once per run. /tmp lives in RAM on the receiver, so rewriting
+    every picture each time the panel opens was adding memory on every colour / view change.
+    A plugin update restarts enigma2, so the run-level cache can never serve a stale picture."""
     path = os.path.join(folder, name + ".png")
-    with open(path, "wb") as f:
+    if _written.get(path) == len(data) and os.path.isfile(path):
+        return path
+    os.makedirs(folder, exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as f:
         f.write(base64.b64decode(data))
+    os.rename(tmp, path)
+    _written[path] = len(data)
     return path
 
 
 def load_pix(folder, name, data):
     try:
-        return LoadPixmap(write_png(folder, name, data))
+        return LoadPixmap(write_png(folder, name, data), cached=True)
     except Exception:
         return None
 
@@ -493,7 +503,7 @@ def get_icon(cat_name, size=48):
         try:
             own = os.path.join(PLUGIN_DIR, "icons", key + ".png")
             if os.path.isfile(own):
-                ptr = LoadPixmap(own)
+                ptr = LoadPixmap(own, cached=True)
             else:
                 data = getattr(assets(), "ICONS%d" % size).get(key)
                 if data:
@@ -819,7 +829,7 @@ class PanelBase(Screen):
 
     def resumeTitle(self):
         if self.titleFrames or self.glowFrames:
-            self.titleTimer.start(90, False)
+            self.titleTimer.start(200, False)
 
     # ----------------------------- تحميل الأوامر -----------------------------
     def refresh(self):
@@ -868,7 +878,8 @@ class PanelBase(Screen):
                     if q in (u"%s %s %s %s" % (it["name"], it["author"], it["desc"], c)).lower()]
             self.cats = [(u"Search: %s" % self.query, hits)]
         else:
-            self.cats = self.allcats
+            everything = [it for _, items in self.allcats for it in items]
+            self.cats = ([(u"All", everything)] + list(self.allcats)) if everything else list(self.allcats)
         self.catIdx = 0
         if keepCat:
             for i, (n, _) in enumerate(self.cats):
@@ -894,7 +905,7 @@ class PanelBase(Screen):
 
     def setBoxPicture(self, path):
         inst = self["box_pic"].instance
-        ptr = LoadPixmap(path)
+        ptr = LoadPixmap(path, cached=True)
         if not inst or not ptr:
             return
         px, py, pw, ph = self.PIC
@@ -1013,7 +1024,14 @@ class PanelBase(Screen):
 
     def settingsDone(self, changed=False):
         if changed:
-            self.close("reopen")            # يعيد فتح البانل بالعرض والثيم الجديدين
+            self.reopenPanel()              # يفتح البانل الجديد بالعرض والثيم الجديدين
+
+    def reopenPanel(self):
+        cls = GridPanel if _state["view"] == "grid" else ListPanel
+        self.session.openWithCallback(self.closeAfterReopen, cls)
+
+    def closeAfterReopen(self, result=None):
+        self.close()
 
     def askUpdate(self):
         self.session.openWithCallback(
@@ -1828,7 +1846,7 @@ class RunScreen(Screen):
 def launch(session):
     load_settings()
     cls = GridPanel if _state["view"] == "grid" else ListPanel
-    session.openWithCallback(lambda result=None: launch(session) if result == "reopen" else None, cls)
+    session.open(cls)
 
 
 def main(session, **kwargs):
