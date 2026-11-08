@@ -1,5 +1,5 @@
 #!/bin/sh
-# E2 Store installer / updater  -  يوضع في جذر المستودع، و REPO يشير إلى مجلد E2Store
+# E2 Store installer / updater  -  يوضع في جذر المستودع، و REPO يشير إلى مجلد MajorPanel
 # الاستخدام:  sh installer.sh            (يثبّت ثم يعيد تشغيل الواجهة)
 #             sh installer.sh norestart  (يثبّت فقط - يستخدمه زر التحديث داخل البانل)
 REPO="https://raw.githubusercontent.com/major79879/Major-Enigma-Panel/refs/heads/main/MajorPanel"
