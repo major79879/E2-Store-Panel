@@ -2,9 +2,9 @@
 # E2 Store installer / updater  -  يوضع في جذر المستودع، و REPO يشير إلى مجلد E2Store
 # الاستخدام:  sh installer.sh            (يثبّت ثم يعيد تشغيل الواجهة)
 #             sh installer.sh norestart  (يثبّت فقط - يستخدمه زر التحديث داخل البانل)
-REPO="https://raw.githubusercontent.com/major79879/E2-Store-Panel/refs/heads/main/E2Store"
-DIR="/usr/lib/enigma2/python/Plugins/Extensions/E2Store"
-TMP="/tmp/e2store_update"
+REPO="https://raw.githubusercontent.com/major79879/Major-Enigma-Panel/refs/heads/main/MajorPanel"
+DIR="/usr/lib/enigma2/python/Plugins/Extensions/MajorPanel"
+TMP="/tmp/majorpanel_update"
 
 rm -rf "$TMP"
 mkdir -p "$TMP"
@@ -27,7 +27,7 @@ mkdir -p "$DIR/boxes"   # مجلد اختياري لصور الأجهزة مثل
 cp -rf "$TMP"/. "$DIR"/ || { echo "Copy failed"; rm -rf "$TMP"; exit 1; }
 chmod -R 755 "$DIR"
 rm -rf "$TMP"
-echo "E2 Store Panel installed successfully."
+echo "Major Enigma Panel installed successfully."
 
 # 3) إعادة تشغيل الواجهة (إلا عند استدعائه من داخل البانل)
 if [ "$1" != "norestart" ]; then
