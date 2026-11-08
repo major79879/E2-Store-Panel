@@ -15,7 +15,9 @@ import shutil
 import ssl
 import struct
 import sys
+import textwrap
 import time
+import traceback
 from urllib.request import Request, urlopen
 
 from enigma import (eConsoleAppContainer, eListboxPythonMultiContent, getDesktop, gFont,
@@ -61,23 +63,22 @@ except Exception:
     HAVE_PTY = False
 
 # ============================ الإعدادات / SETTINGS ===========================
-# رابط ملف الأوامر على GitHub (عدّله لو اختلف المسار عندك)
-COMMANDS_URL = "https://raw.githubusercontent.com/major79879/Major-Enigma-Panel/refs/heads/main/MP_Commands.lst"
+# كل الروابط تُبنى من هذا المتغير الواحد - لتغيير المستودع عدّل السطر التالي فقط
+# (وعدّل نفس العنوان في أول installer.sh)
+GITHUB_RAW = "https://raw.githubusercontent.com/major79879/Major-Enigma-Panel/refs/heads/main"
+COMMANDS_URL = GITHUB_RAW + "/MP_Commands.lst"            # ملف الأوامر
 PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
 OLD_CACHE_FILES = ("/etc/enigma2/e2store_cache.lst", "/etc/enigma2/modernpanel_cache.lst")  # نسخ قديمة تُحذف تلقائياً
 TITLE = "Major Enigma Panel"
 CREDIT = "By John Kamel"
 # تحديث البانل نفسه (إعادة التثبيت) - ملف installer.sh موجود في جذر المستودع (خارج مجلد MajorPanel)
-INSTALLER_URL = "https://raw.githubusercontent.com/major79879/Major-Enigma-Panel/refs/heads/main/installer.sh"
+INSTALLER_URL = GITHUB_RAW + "/installer.sh"
 UPDATE_CMD = 'wget -q --no-check-certificate -O - "%s" | /bin/sh -s norestart' % INSTALLER_URL
 SETTINGS_FILE = "/etc/enigma2/majorpanel_settings.json"      # عرض البانل + الثيم المختار
 RUN_LOG = "/tmp/majorpanel_run.log"                          # سجل تشخيصي لشاشة التنفيذ
 ASSET_DIR = "/tmp/majorpanel"                                # صور مؤقتة صغيرة تُحذف عند إغلاق البانل
 ERROR_LOG = "/tmp/majorpanel_error.log"
-JOB_SH = "/tmp/majorpanel_job.sh"                          # سكربت التنفيذ (يخفي الأمر الحقيقي)
-JOB_FILTER = "/tmp/majorpanel_filter.py"
-JOB_RC = "/tmp/majorpanel_rc"
-DEFAULT_SETTINGS = {"view": "list", "theme": "neon_blue", "anim": False}
+DEFAULT_SETTINGS = {"view": "list", "theme": "neon_blue", "anim": False, "mainmenu": True}
 # ============================================================================
 
 # ---- مصدر واحد لتعريف الثيمات (يُستخدم في plugin.py وفي توليد الصور) ----
@@ -160,16 +161,46 @@ def load_settings():
     _state["view"] = view if view in ("list", "grid") else DEFAULT_SETTINGS["view"]
     _state["theme"] = theme if theme in THEMES else DEFAULT_SETTINGS["theme"]
     _state["anim"] = bool(data.get("anim", DEFAULT_SETTINGS["anim"]))
+    _state["mainmenu"] = bool(data.get("mainmenu", DEFAULT_SETTINGS["mainmenu"]))
     return _state
 
 
-def save_settings(view, theme, anim=False):
+def save_settings(view, theme, anim=False, mainmenu=True):
     try:
         with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
-            json.dump({"view": view, "theme": theme, "anim": bool(anim)}, f)
+            json.dump({"view": view, "theme": theme, "anim": bool(anim), "mainmenu": bool(mainmenu)}, f)
         return True
     except Exception:
         return False
+
+
+def menu_enabled():
+    """Show the panel in the image's main Menu?  (Settings -> Main Menu)"""
+    try:
+        with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+            return bool(json.load(f).get("mainmenu", True))
+    except Exception:
+        return DEFAULT_SETTINGS["mainmenu"]
+
+
+def release_actions(actionmap):
+    """Unbind an ActionMap ONLY if the framework has not already done it. A second unbind of the same
+    keys while the screen below (the TV infobar) is being re-bound can leave the remote's arrow keys dead."""
+    try:
+        if getattr(actionmap, "execActive", False):
+            actionmap.execEnd()
+    except Exception as e:
+        dlog_error("release_actions: %s" % e)
+
+
+def safe(fn):
+    """Key handler wrapper: an exception inside a key press must never break the screen (it is logged)."""
+    def wrapper(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except Exception:
+            dlog_error("key handler %s failed:\n%s" % (getattr(fn, "__name__", "?"), traceback.format_exc()))
+    return wrapper
 
 
 def T():
@@ -663,12 +694,12 @@ def header_xml():
     out = [
         box((0, 0, 1920, 110), c["card"]),
         '<eLabel position="0,%d" size="%d,%d" backgroundColor="%s" zPosition="1"/>' % (s(106), _W, max(2, s(4)), c["hdr"]),
-        wid("title", (156, 20, 400, 70), font=46, fg=(c["acc"] if t["modern"] else "#FFFFFF"), valign="center"),
-        pixw("title_glow", (146, 13, 440, 84)),
-        pixw("title_img", (146, 13, 440, 84), z=3),
+        wid("title", (156, 20, 520, 70), font=46, fg=(c["acc"] if t["modern"] else "#FFFFFF"), valign="center"),
+        pixw("title_glow", (146, 13, 520, 84)),
+        pixw("title_img", (146, 13, 520, 84), z=3),
         pixw("logo_glow", (34, 5, 100, 100)),
         pixw("logo_img", (34, 5, 100, 100), z=3),
-        wid("credit", (606, 20, 480, 70), font=24, fg=c["muted"], valign="center", extra='noWrap="1"'),
+        wid("credit", (686, 20, 400, 70), font=24, fg=c["muted"], valign="center", extra='noWrap="1"'),
         wid("h_server", (1090, 20, 340, 70), font=28, fg=c["warn"], halign="right", valign="center"),
         wid("clock", (1560, 4, 300, 62), font=52, fg="#FFFFFF", halign="right", valign="center"),
         wid("date", (1440, 66, 420, 36), font=24, fg=c["muted"], halign="right", valign="center"),
@@ -738,19 +769,18 @@ class PanelBase(Screen):
         self["hint"] = Label(self.HINT)
         self.createViewWidgets()
 
-        self["actions"] = ActionMap(
-            ACTION_CONTEXTS,
-            {
-                "ok": self.askInstall, "green": self.askInstall,
-                "cancel": self.exit, "red": self.exit,
-                "yellow": self.search,
-                "blue": self.refresh,                       # تحديث الأوامر
-                "menu": self.openSettings,                  # الإعدادات
-                "info": self.askUpdate,                     # تحديث البانل نفسه
-                "left": self.keyLeft, "right": self.keyRight,
-                "up": self.keyUp, "down": self.keyDown,
-                "pageUp": self.prevCat, "pageDown": self.nextCat,
-            }, -1)
+        keys = {
+            "ok": self.askInstall, "green": self.askInstall,
+            "cancel": self.exit, "red": self.exit,
+            "yellow": self.search,
+            "blue": self.refresh,                       # تحديث الأوامر
+            "menu": self.openSettings,                  # الإعدادات
+            "info": self.askUpdate,                     # تحديث البانل نفسه
+            "left": self.keyLeft, "right": self.keyRight,
+            "up": self.keyUp, "down": self.keyDown,
+            "pageUp": self.prevCat, "pageDown": self.nextCat,
+        }
+        self["actions"] = ActionMap(ACTION_CONTEXTS, dict((k, safe(v)) for k, v in keys.items()), -1)
 
         self.closing = False
         self.tickCount = 0
@@ -827,11 +857,11 @@ class PanelBase(Screen):
             except Exception:
                 pass
         self._tconn = []
+        release_actions(self["actions"])
         try:
-            self["actions"].execEnd()
-        except Exception:
-            pass
-        self.freeMemory()
+            self.freeMemory()
+        except Exception as e:
+            dlog_error("freeMemory: %s" % e)
 
     def freeMemory(self):
         """Release pictures and data as soon as the screen closes."""
@@ -1099,7 +1129,15 @@ class PanelBase(Screen):
     def confirmed(self, answer):
         it = self.currentItem()
         if answer and it:
-            run_item(self.session, it, u"Installing")
+            self.hide()                     # يظهر الفيديو خلف نافذة التيرمنال
+            run_item(self.session, it, VERB_INSTALL, self.afterRun)
+
+    def afterRun(self, *args):
+        if not self.closing:
+            try:
+                self.show()
+            except Exception:
+                pass
 
     # ------------------------- الإعدادات وتحديث البانل -----------------------
     def openSettings(self):
@@ -1117,9 +1155,13 @@ class PanelBase(Screen):
 
     def confirmUpdate(self, answer):
         if answer:
-            run_item(self.session, update_item(), u"Updating")
+            self.hide()
+            run_item(self.session, update_item(), VERB_UPDATE, self.afterRun)
 
     def exit(self):
+        if self.closing:
+            return
+        self.closing = True
         self.close()
 
 
@@ -1473,7 +1515,7 @@ class GridPanel(PanelBase):
 
 
 # --------------------------------- شاشة الإعدادات -----------------------------
-SETTINGS_ROWS = ("view", "style", "color", "anim", "update")
+SETTINGS_ROWS = ("view", "style", "color", "anim", "mainmenu", "update")
 
 
 def settings_skin():
@@ -1486,7 +1528,7 @@ def settings_skin():
         box((360, 150, 1200, 790), c["card"], 24),
         '<widget name="rows" %s backgroundColor="%s" backgroundColorSelected="%s" foregroundColor="%s" '
         'foregroundColorSelected="#FFFFFF" scrollbarMode="showNever" transparent="0" zPosition="2"/>' % (
-            rect(390, 175, 1140, 500), c["card"], c["sel"], c["text"]),
+            rect(390, 175, 1140, 510), c["card"], c["sel"], c["text"]),
         wid("s_prev", (390, 690, 1140, 40), font=26, fg=c["acc"], valign="center"),
     ]
     for i in range(5):
@@ -1513,18 +1555,19 @@ class SettingsScreen(Screen):
         self.orig = (st["view"], st["theme"], st["anim"])
         self.view = st["view"]
         self.anim = st["anim"]
+        self.mainmenu = st["mainmenu"]
         self.style = "classic" if st["theme"] == "classic" else "modern"
         self.color = st["theme"] if st["theme"] != "classic" else MODERN_ORDER[0]
 
         self["s_title"] = Label(u"الإعدادات | Settings")
         self["rows"] = MenuList([], enableWrapAround=True, content=eListboxPythonMultiContent)
         self["rows"].l.setFont(0, gFont("Regular", s(34)))
-        self["rows"].l.setItemHeight(s(100))
+        self["rows"].l.setItemHeight(s(84))
         self["s_prev"] = Label("")
         for i in range(5):
             self["sw%d" % i] = Label("")
         self["s_note"] = Label(u"Animation (الاسم واللوجو المتحركان) أجمل لكنه يستهلك معالجاً وذاكرة أكثر - الأفضل إيقافه للأداء الأخف.\n"
-                               u"Changes apply after saving; the panel reopens by itself.")
+                               u"Main Menu: إظهار البانل في القائمة الرئيسية للصورة (Menu).\nChanges apply after saving; the panel reopens by itself.")
         self["key_red"] = Label(u"إلغاء | Cancel")
         self["key_green"] = Label(u"حفظ وتطبيق | Save & Apply")
         self["hint"] = Label("LEFT / RIGHT : change     UP / DOWN : select     OK : on 'Update panel' runs the update")
@@ -1547,16 +1590,17 @@ class SettingsScreen(Screen):
             ("Style", "Classic" if self.style == "classic" else "Modern", True),
             ("Color", THEMES[self.color]["name"] if modern else u"— (Modern only)", modern),
             ("Animation", "On" if self.anim else "Off", True),
+            ("Main Menu", "Show" if self.mainmenu else "Hide", True),
             ("Update panel", u"Run  \u25b6", True),
         )
         rows = []
         for i, (name, value, active) in enumerate(values):
-            arrows = ("<  %s  >" % value) if (active and i < 4) else value
+            arrows = ("<  %s  >" % value) if (active and i < len(values) - 1) else value
             rows.append([name,
-                         MultiContentEntryText(pos=(s(30), 0), size=(s(500), s(100)), font=0,
+                         MultiContentEntryText(pos=(s(30), 0), size=(s(500), s(84)), font=0,
                                                flags=RT_HALIGN_LEFT | RT_VALIGN_CENTER, text=name,
                                                color=txt if active else mut, color_sel=0xFFFFFF),
-                         MultiContentEntryText(pos=(s(520), 0), size=(s(590), s(100)), font=0,
+                         MultiContentEntryText(pos=(s(520), 0), size=(s(590), s(84)), font=0,
                                                flags=RT_HALIGN_RIGHT | RT_VALIGN_CENTER, text=arrows,
                                                color=acc if active else mut, color_sel=0xFFFFFF)])
         self["rows"].setList(rows)
@@ -1582,6 +1626,8 @@ class SettingsScreen(Screen):
             self.color = MODERN_ORDER[i]
         elif row == "anim":
             self.anim = not self.anim
+        elif row == "mainmenu":
+            self.mainmenu = not self.mainmenu
         self.refreshAll()
 
     def left(self):
@@ -1607,57 +1653,117 @@ class SettingsScreen(Screen):
 
     def confirmUpdate(self, answer):
         if answer:
-            run_item(self.session, update_item(), u"Updating")
+            run_item(self.session, update_item(), VERB_UPDATE)
 
     def releaseKeys(self):
-        try:
-            self["actions"].execEnd()
-        except Exception:
-            pass
+        release_actions(self["actions"])
 
     def save(self):
         theme = self.themeKey()
-        changed = (self.view, theme, self.anim) != self.orig
-        save_settings(self.view, theme, self.anim)
+        changed = (self.view, theme, self.anim) != self.orig     # تغيير القائمة الرئيسية لا يحتاج إعادة فتح
+        save_settings(self.view, theme, self.anim, self.mainmenu)
         self.close(changed)
 
     def cancel(self):
         self.close(False)
 
 
-# --------------------------------- شاشة التنفيذ ------------------------------
+# --------------------------------- شاشة التيرمنال ------------------------------
+# نافذة مثل شاشة Console في الصورة: صندوق مستدير فوق الفيديو، عنوان، سجل ملوّن (ألوان ANSI)،
+# وزرّان:  Cancel (أحمر) / Hide (أخضر).  الأمر الحقيقي والروابط لا تظهر (تُستبدل بـ [link hidden]).
+VERB_INSTALL = u"التثبيت التلقائي لـ"
+VERB_UPDATE = u"التحديث التلقائي لـ"
+
+LOG_X, LOG_Y, LOG_W, LOG_H, LOG_LINE = 316, 214, 1270, 680, 34
+WRAP_COLS = 84
+MAX_LINES = 300
+MAX_ROWS = 600
+DEF_FG = "#D6E2F5"
+ANSI_NORMAL = {30: "#8FA0BF", 31: "#FF5C6C", 32: "#3DDC84", 33: "#FFD54A",
+               34: "#5AA9FF", 35: "#E27BFF", 36: "#3DE3E3", 37: "#E8F1FF"}
+ANSI_BRIGHT = {30: "#B4C2DC", 31: "#FF8090", 32: "#6BFFA8", 33: "#FFE985",
+               34: "#8CC4FF", 35: "#F0A8FF", 36: "#8CF5F5", 37: "#FFFFFF"}
+
+SGR_RE = re.compile(r"\x1b\[([0-9;]*)m")                              # ألوان فقط
+CSI_OTHER_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-ln-~]")            # أي تحكم آخر (مؤشر / مسح ...)
+OSC_RE = re.compile(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)")             # عنوان النافذة
+CHARSET_RE = re.compile(r"\x1b[()][0-9A-Za-z]")
+ESC_DONE_RE = re.compile(r"\x1b(?:\[[0-9;?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[()][0-9A-Za-z]|[=>78M])")
+CTRL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1a\x1c-\x1f]")        # رموز تحكم متبقية (ما عدا ESC)
+URL_RE = re.compile(r"(?:https?|ftps?)://[^\s'\"<>]+", re.I)
+XTRACE_RE = re.compile(r"^\++ ")                                      # أسطر "+ command" الناتجة عن sh -x
+LINK_MASK = u"[link hidden]"
+
+
+def sgr_apply(params, state):
+    """state = (foreground code or None, bold)."""
+    fg, bold = state
+    codes = [int(p) if p.isdigit() else 0 for p in params.split(";")] if params else [0]
+    i = 0
+    while i < len(codes):
+        c = codes[i]
+        if c == 0:
+            fg, bold = None, False
+        elif c == 1:
+            bold = True
+        elif c == 22:
+            bold = False
+        elif 30 <= c <= 37:
+            fg = c
+        elif 90 <= c <= 97:
+            fg, bold = c - 60, True
+        elif c == 39:
+            fg = None
+        elif c in (38, 48):                         # ألوان 256 / RGB: نتجاهلها
+            i += 2 if (i + 1 < len(codes) and codes[i + 1] == 5) else 4
+        i += 1
+    return fg, bold
+
+
+def sgr_color(state):
+    fg, bold = state
+    if fg is None:
+        return "#FFFFFF" if bold else DEF_FG
+    return (ANSI_BRIGHT if bold else ANSI_NORMAL)[fg]
+
+
+def scan_line(line, state):
+    """Returns (hex color of the first visible text in the line, state after the line)."""
+    first = None
+    last = 0
+    for m in SGR_RE.finditer(line):
+        if first is None and line[last:m.start()].strip():
+            first = state
+        state = sgr_apply(m.group(1), state)
+        last = m.end()
+    if first is None:
+        first = state
+    return sgr_color(first), state
+
+
 def run_skin():
     c = tc()
+    fill = "#10" + c["card2"].lstrip("#")          # لون الصندوق (شبه معتم)
     parts = [
-        '<screen name="MajorPanelRun" position="0,0" size="%d,%d" flags="wfNoBorder" backgroundColor="%s">' % (_W, _H, c["bg"]),
-        box((0, 0, 1920, 110), c["card"]),
-        '<eLabel position="0,%d" size="%d,%d" backgroundColor="%s" zPosition="1"/>' % (s(106), _W, max(2, s(4)), c["hdr"]),
-        wid("title", (60, 20, 1800, 70), font=46, fg="#FFFFFF", valign="center"),
-        box((40, 135, 1840, 715), c["term"], 24),
-        '<widget name="log" %s font="Regular;%d" foregroundColor="%s" backgroundColor="%s" scrollbarMode="showOnDemand" '
-        'zPosition="2"/>' % (rect(65, 155, 1790, 675), s(26), "#C8D6EE", c["term"]),
-        wid("status", (40, 865, 1840, 70), font=34, fg=c["warn"], bg=c["bg"], halign="center", valign="center"),
-        '<widget name="key_red" %s font="Regular;%d" foregroundColor="#FFFFFF" backgroundColor="%s" cornerRadius="%d" '
-        'halign="center" valign="center" zPosition="2"/>' % (rect(40, 955, 900, 66), s(30), c["red"], s(16)),
-        '<widget name="key_green" %s font="Regular;%d" foregroundColor="#FFFFFF" backgroundColor="%s" cornerRadius="%d" '
-        'halign="center" valign="center" zPosition="2"/>' % (rect(980, 955, 900, 66), s(30), c["green"], s(16)),
+        '<screen name="MajorPanelRun" position="0,0" size="%d,%d" flags="wfNoBorder" backgroundColor="#99000000">' % (_W, _H),
+        box((258, 83, 1366, 921), c["acc"], 34, z=0),
+        box((261, 86, 1360, 915), fill, 32, z=1),
+        wid("title", (316, 112, 1250, 84), font=40, fg="#FFFFFF", valign="center"),
+        '<widget name="log" %s backgroundColor="%s" backgroundColorSelected="%s" scrollbarMode="showOnDemand" '
+        'transparent="1" zPosition="3"/>' % (rect(LOG_X, LOG_Y, LOG_W, LOG_H), fill, fill),
+        box((338, 944, 18, 18), c["red"], 9, z=2),
+        wid("key_red", (370, 924, 190, 58), font=30, fg="#FFFFFF", halign="left", valign="center"),
+        box((568, 944, 18, 18), c["green"], 9, z=2),
+        wid("key_green", (600, 924, 330, 58), font=30, fg="#FFFFFF", halign="left", valign="center"),
+        wid("status", (940, 924, 630, 58), font=28, fg=c["warn"], halign="right", valign="center"),
         '</screen>',
     ]
     return "\n".join(parts)
 
 
-ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")          # أكواد التحكم (ألوان / مؤشر)
-OSC_RE = re.compile(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)")    # عنوان النافذة
-CTRL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")        # أي رموز تحكم متبقية
-URL_RE = re.compile(r"(?:https?|ftps?)://[^\s'\"<>]+", re.I)
-XTRACE_RE = re.compile(r"^\++ ")                              # أسطر "+ command" الناتجة عن sh -x
-LINK_MASK = u"[link hidden]"
-MAX_LINES = 400
-
-
 def run_in_pty(cmd, holder, out):
     """Worker thread: runs `cmd` on a pseudo-terminal (so the output behaves like a real terminal:
-    line by line, progress bars...) and appends the decoded text to the deque `out`.
+    line by line, colors, progress bars...) and appends the decoded text to the deque `out`.
     The UI polls the deque from the main thread - no cross-thread GUI calls."""
     master = None
     try:
@@ -1703,34 +1809,42 @@ def run_in_pty(cmd, holder, out):
 
 
 class RunScreen(Screen):
-    def __init__(self, session, item):
+    def __init__(self, session, item, verb=VERB_INSTALL):
         self.t = T()
         self.skin = run_skin()
         Screen.__init__(self, session)
         self.item = item
-        self.lines = []         # finished lines (raw)
+        self.lines = []         # finished lines (raw, with color codes)
         self.partial = ""       # current unfinished line
+        self.carry = ""         # incomplete escape sequence waiting for the next chunk
         self.cr = False         # last char was a bare carriage return (progress bars)
         self.done = False
+        self.success = False
         self.closed = False
+        self.hidden = False
+        self.follow = True      # keep the log scrolled to the bottom
+        self.dirty = False
+        self.ticks = 0
         self.gotOutput = False
         self.mode = ""
         self.q = collections.deque()
         self.holder = {"rc": None, "proc": None, "error": None}
         self.container = None
 
-        self["title"] = Label(item["name"])
-        self["log"] = ScrollLabel("")
+        self["title"] = Label(u"%s %s" % (verb, item["name"]))
+        self["log"] = MenuList([], content=eListboxPythonMultiContent)
+        self["log"].l.setFont(0, gFont("Regular", s(26)))
+        self["log"].l.setItemHeight(s(LOG_LINE))
         self["status"] = Label(u"جارٍ التنفيذ... | Running...")
-        self["key_red"] = Label(u"إيقاف | Stop")
-        self["key_green"] = Label("")
+        self["key_red"] = Label(u"Cancel")
+        self["key_green"] = Label(u"Hide")
         self["actions"] = ActionMap(
             ["OkCancelActions", "ColorActions", "DirectionActions"],
             {
                 "red": self.onRed, "cancel": self.onRed,
-                "green": self.onGreen, "ok": self.onGreen,
-                "up": self["log"].pageUp, "down": self["log"].pageDown,
-                "left": self["log"].pageUp, "right": self["log"].pageDown,
+                "green": self.onGreen, "ok": self.onOk,
+                "up": self.scrollUp, "down": self.scrollDown,
+                "left": self.pageUp, "right": self.pageDown,
             }, -1)
         self.pollTimer = eTimer()
         try:
@@ -1741,14 +1855,19 @@ class RunScreen(Screen):
         self.onClose.append(self.cleanup)
 
     def releaseKeys(self):
-        try:
-            self["actions"].execEnd()
-        except Exception:
-            pass
+        release_actions(self["actions"])
 
     # ------------------------------ السجل -----------------------------------
     def feed(self, text):
-        text = OSC_RE.sub("", ANSI_RE.sub("", text)).replace("\t", "    ")
+        text = self.carry + text
+        self.carry = ""
+        k = text.rfind("\x1b")
+        if k != -1 and not ESC_DONE_RE.match(text, k) and len(text) - k < 64:
+            self.carry = text[k:]               # تسلسل ألوان مقطوع: ننتظر باقيه
+            text = text[:k]
+        text = OSC_RE.sub("", text)
+        text = CSI_OTHER_RE.sub("", text)
+        text = CHARSET_RE.sub("", text).replace("\t", "    ")
         for part in re.split(r"(\r\n|\n|\r)", text):
             if part == "":
                 continue
@@ -1766,26 +1885,45 @@ class RunScreen(Screen):
                 self.partial += part
         if len(self.lines) > MAX_LINES:
             del self.lines[:-MAX_LINES]
+        self.dirty = True
 
     def render(self):
         if self.closed:
             return
-        lines = [l for l in self.lines + [self.partial] if not XTRACE_RE.match(l)]
-        text = "\n".join(lines)
-        cmd = self.item["cmd"]
-        if cmd:
-            text = text.replace(cmd, "")                # لا يظهر أمر التنفيذ نفسه
-        text = URL_RE.sub(LINK_MASK, text)              # ولا تظهر الروابط
-        self["log"].setText(text)
-        try:
-            self["log"].lastPage()
-        except Exception:
-            pass
+        self.dirty = False
+        state = (None, False)
+        cmd = self.item.get("cmd")
+        rows = []
+        for raw in self.lines + [self.partial]:
+            col, state = scan_line(raw, state)
+            plain = SGR_RE.sub("", raw)
+            if XTRACE_RE.match(plain):
+                continue
+            if cmd:
+                plain = plain.replace(cmd, "")              # لا يظهر أمر التنفيذ نفسه
+            plain = URL_RE.sub(LINK_MASK, plain)            # ولا تظهر الروابط
+            color = hexint(col)
+            for seg in (textwrap.wrap(plain, WRAP_COLS, drop_whitespace=False,
+                                      replace_whitespace=False) or [""]):
+                rows.append([None, MultiContentEntryText(
+                    pos=(0, 0), size=(s(LOG_W), s(LOG_LINE)), font=0,
+                    flags=RT_HALIGN_LEFT | RT_VALIGN_CENTER, text=seg, color=color, color_sel=color)])
+        if len(rows) > MAX_ROWS:
+            rows = rows[-MAX_ROWS:]
+        lst = self["log"]
+        old = lst.getSelectionIndex()
+        lst.setList(rows)
+        if rows:
+            lst.moveToIndex(len(rows) - 1 if self.follow else min(old, len(rows) - 1))
 
     # ------------------------------ التشغيل ---------------------------------
     def start(self):
+        try:
+            self["log"].instance.setSelectionEnable(0)
+        except Exception:
+            pass
         setColor(self["status"], self.t["warn"])
-        self.feed(u"Starting installation...\n\n")
+        self.feed(u"\x1b[1;36m> Starting...\x1b[0m\n\n")
         self.render()
         dlog("run '%s' | pty available: %s" % (self.item.get("name", ""), HAVE_PTY))
         if HAVE_PTY:
@@ -1829,12 +1967,11 @@ class RunScreen(Screen):
         """Main-thread timer: moves text produced by the worker thread to the screen."""
         if self.closed or self.done:
             return
-        got = False
         while self.q:
             self.feed(self.q.popleft())
-            got = True
-        if got:
             self.gotOutput = True
+        self.ticks += 1
+        if self.dirty and self.ticks % 2 == 0:              # لا نعيد الرسم أكثر من 5 مرات في الثانية
             self.render()
         rc = self.holder["rc"]
         if rc is not None and not self.q:
@@ -1849,19 +1986,35 @@ class RunScreen(Screen):
         if self.done or self.closed:
             return
         self.done = True
+        self.success = (retval == 0)
         dlog("finished rc=%s mode=%s output=%s" % (retval, self.mode, self.gotOutput))
-        self.feed(u"\n\n--- finished (exit code %s) ---\n" % retval)
+        self.feed(u"\n\x1b[%sm--- finished (exit code %s) ---\x1b[0m\n" % ("1;32" if self.success else "1;31", retval))
+        self.follow = True
         self.render()
-        self["key_red"].setText(u"إغلاق | Close")
-        if retval == 0:
+        self.wake()
+        self["key_red"].setText(u"Close")
+        if self.success:
             self["status"].setText(u"تم بنجاح | Finished successfully")
             setColor(self["status"], self.t["ok"])
-            self["key_green"].setText(u"إعادة تشغيل الواجهة | Restart GUI")
+            self["key_green"].setText(u"Restart GUI")
+            self.askRestart()
         else:
             self["status"].setText(u"انتهى برمز خطأ %s | Finished with code %s" % (retval, retval))
             setColor(self["status"], self.t["bad"])
+            self["key_green"].setText(u"")
 
     # ------------------------------ الأزرار ---------------------------------
+    def wake(self):
+        """If the window is hidden (Hide button) show it again. Returns True if it was hidden."""
+        if self.hidden:
+            self.hidden = False
+            try:
+                self.show()
+            except Exception:
+                pass
+            return True
+        return False
+
     def killProcess(self):
         proc = self.holder.get("proc")
         if proc is not None:
@@ -1878,7 +2031,9 @@ class RunScreen(Screen):
             except Exception:
                 pass
 
-    def onRed(self):
+    def onRed(self):                    # Cancel / Close
+        if self.wake():
+            return
         if not self.done:
             self.killProcess()
             self.pollTimer.stop()
@@ -1886,11 +2041,47 @@ class RunScreen(Screen):
         else:
             self.close()
 
-    def onGreen(self):
-        if self.done and self["key_green"].getText():
-            self.session.openWithCallback(
-                self.restartAnswer, MessageBox,
-                u"إعادة تشغيل الواجهة الآن؟\nRestart GUI now?", MessageBox.TYPE_YESNO)
+    def onGreen(self):                  # Hide  (بعد الانتهاء: Restart GUI)
+        if self.wake():
+            return
+        if not self.done:
+            self.hidden = True
+            self.hide()                 # أي زر يعيد إظهار النافذة
+        elif self.success:
+            self.askRestart()
+
+    def onOk(self):
+        if self.wake():
+            return
+        if self.done and self.success:
+            self.askRestart()
+
+    def scrollUp(self):
+        if not self.wake():
+            self["log"].up()
+            self.follow = False
+
+    def scrollDown(self):
+        if not self.wake():
+            self["log"].down()
+            self.follow = self["log"].getSelectionIndex() >= len(self["log"].list) - 1
+
+    def pageUp(self):
+        if not self.wake():
+            self["log"].pageUp()
+            self.follow = False
+
+    def pageDown(self):
+        if not self.wake():
+            self["log"].pageDown()
+            self.follow = self["log"].getSelectionIndex() >= len(self["log"].list) - 1
+
+    def askRestart(self):
+        text = u"إعادة تشغيل الواجهة الآن؟\nRestart GUI now?"
+        try:
+            self.session.openWithCallback(self.restartAnswer, MessageBox, text, MessageBox.TYPE_YESNO, default=False)
+        except TypeError:
+            self.session.openWithCallback(self.restartAnswer, MessageBox, text, MessageBox.TYPE_YESNO)
 
     def restartAnswer(self, answer):
         if answer:
@@ -1914,89 +2105,9 @@ class RunScreen(Screen):
                     pass
 
 
-# ---------------- تنفيذ الأوامر داخل شاشة Console الخاصة بالصورة ----------------
-# الأمر الحقيقي يُكتب في سكربت مؤقت، فلا يظهر في الشاشة إلا:  sh /tmp/majorpanel_job.sh
-# (والروابط في الناتج تُستبدل بـ [link hidden])
-FILTER_PY = (
-    "import os, re, sys\n"
-    "rx = re.compile(rb\"(?:https?|ftps?)://[^\\s'\\\"<>]+\", re.I)\n"
-    "out = sys.stdout.buffer\n"
-    "while True:\n"
-    "    d = os.read(0, 4096)\n"
-    "    if not d:\n"
-    "        break\n"
-    "    out.write(rx.sub(b'[link hidden]', d))\n"
-    "    out.flush()\n"
-)
-
-
-def write_job(cmd):
-    py = shutil.which("python3") or shutil.which("python")
-    body = "{ (\n%s\n) 2>&1; echo $? > %s; }" % (cmd, JOB_RC)
-    if py:
-        with open(JOB_FILTER, "w", encoding="utf-8") as f:
-            f.write(FILTER_PY)
-        body += " | %s -u %s" % (py, JOB_FILTER)
-    lines = ["#!/bin/sh", "rm -f %s" % JOB_RC, body,
-             "rc=$(cat %s 2>/dev/null)" % JOB_RC, '[ -z "$rc" ] && rc=1', 'echo ""',
-             'if [ "$rc" = "0" ]; then echo "=== FINISHED OK ==="; '
-             'else echo "=== FINISHED WITH ERRORS (code $rc) ==="; fi',
-             "exit $rc"]
-    with open(JOB_SH, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines) + "\n")
-    os.chmod(JOB_SH, 0o755)
-
-
-def job_result():
-    try:
-        with open(JOB_RC, "r") as f:
-            return f.read().strip()
-    except Exception:
-        return ""
-
-
-def job_cleanup():
-    for path in (JOB_SH, JOB_FILTER, JOB_RC):
-        try:
-            os.remove(path)
-        except OSError:
-            pass
-
-
-def job_finished(session):
-    rc = job_result()
-    job_cleanup()
-    if rc != "0":
-        return
-
-    def answer(yes):
-        if yes:
-            session.open(TryQuitMainloop, 3)
-    text = u"تم التنفيذ بنجاح. إعادة تشغيل الواجهة الآن؟\nDone. Restart GUI now?"
-    try:
-        session.openWithCallback(answer, MessageBox, text, MessageBox.TYPE_YESNO, default=False)
-    except TypeError:
-        session.openWithCallback(answer, MessageBox, text, MessageBox.TYPE_YESNO)
-
-
-def run_item(session, item, verb=u"Installing"):
-    """Runs the item's command inside the image's own Console screen (terminal look).
-    Falls back to our own terminal screen if Console is not available."""
-    try:
-        from Screens.Console import Console
-    except Exception:
-        Console = None
-    if Console is not None:
-        try:
-            write_job(item["cmd"])
-            session.openWithCallback(lambda *a: job_finished(session), Console,
-                                     title=u"%s %s" % (verb, item["name"]), cmdlist=["sh %s" % JOB_SH])
-            return True
-        except Exception as e:
-            dlog_error("Console run failed: %s" % e)
-            job_cleanup()
-    session.open(RunScreen, item)
-    return False
+def run_item(session, item, verb=VERB_INSTALL, callback=None):
+    """Runs the item's command inside the terminal window (RunScreen)."""
+    session.openWithCallback(callback if callback else (lambda *a: None), RunScreen, item, verb)
 
 
 # --------------------------------- التسجيل -----------------------------------
@@ -2019,7 +2130,6 @@ def onPanelClosed(session, result=None):
 
 
 def launch(session):
-    import traceback
     load_settings()
     order = [GridPanel, ListPanel] if _state["view"] == "grid" else [ListPanel]
     opened = None
@@ -2032,7 +2142,7 @@ def launch(session):
         except Exception:
             dlog_error("%s failed:\n%s" % (cls.__name__, traceback.format_exc()))
             if cls is GridPanel:
-                save_settings("list", _state["theme"], _state["anim"])      # لا نكرر العطل في كل مرة
+                save_settings("list", _state["theme"], _state["anim"], _state["mainmenu"])      # لا نكرر العطل في كل مرة
                 _state["view"] = "list"
     try:
         if opened is None:
@@ -2051,8 +2161,8 @@ def main(session, **kwargs):
 
 
 def menuHook(menuid, **kwargs):
-    """Adds Major Enigma Panel to the main Menu of the image."""
-    if menuid == "mainmenu":
+    """Adds Major Enigma Panel to the main Menu of the image (can be switched off in the panel Settings)."""
+    if menuid == "mainmenu" and menu_enabled():
         return [(TITLE, main, "major_enigma_panel", 1)]
     return []
 
