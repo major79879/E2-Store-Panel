@@ -64,10 +64,9 @@ except Exception:
 # رابط ملف الأوامر على GitHub (عدّله لو اختلف المسار عندك)
 COMMANDS_URL = "https://raw.githubusercontent.com/major79879/Major-Enigma-Panel/refs/heads/main/MP_Commands.lst"
 PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
-OLD_CACHE_FILES = ("/etc/enigma2/e2store_cache.lst", "/etc/enigma2/modernpanel_cache.lst")  # نسخ قديمة تُحذف تلقائياً
 TITLE = "Major Enigma Panel"
 CREDIT = "By John Kamel"
-# تحديث البانل نفسه (إعادة التثبيت) - ملف installer.sh موجود في جذر المستودع (خارج مجلد E2Store)
+# تحديث البانل نفسه (إعادة التثبيت) - ملف installer.sh موجود في جذر المستودع (خارج مجلد MajorPanel)
 INSTALLER_URL = "https://raw.githubusercontent.com/major79879/Major-Enigma-Panel/refs/heads/main/installer.sh"
 UPDATE_CMD = 'wget -q --no-check-certificate -O - "%s" | /bin/sh -s norestart' % INSTALLER_URL
 SETTINGS_FILE = "/etc/enigma2/majorpanel_settings.json"      # عرض البانل + الثيم المختار
@@ -224,7 +223,7 @@ def _fetch(url, timeout=20):
     ctx = ssl._create_unverified_context()      # بعض الصور بدون شهادات CA
     sep = "&" if "?" in url else "?"
     req = Request(url + sep + "t=%d" % int(time.time()),
-                  headers={"User-Agent": "E2Store/1.0", "Cache-Control": "no-cache"})
+                  headers={"User-Agent": "MajorPanel/1.0", "Cache-Control": "no-cache"})
     return urlopen(req, timeout=timeout, context=ctx).read().decode("utf-8", "ignore")
 
 
@@ -440,7 +439,7 @@ def get_hdd():
 
 # ------------------------------ الصور المدمجة --------------------------------
 # assets.py كبير (صور base64): نستخرج منه فقط ما يلزم الثيم والعرض المختارين إلى /tmp،
-# ثم نحذف الوحدة من الذاكرة فوراً. وعند إغلاق البانل يُحذف مجلد /tmp/e2store بالكامل.
+# ثم نحذف الوحدة من الذاكرة فوراً. وعند إغلاق البانل يُحذف مجلد /tmp/majorpanel بالكامل.
 _icon_cache = {}
 
 
@@ -1479,7 +1478,7 @@ SETTINGS_ROWS = ("view", "style", "color", "anim", "update")
 def settings_skin():
     c = tc()
     parts = [
-        '<screen name="E2StoreSettings" position="0,0" size="%d,%d" flags="wfNoBorder" backgroundColor="%s">' % (_W, _H, c["bg"]),
+        '<screen name="MajorPanelSettings" position="0,0" size="%d,%d" flags="wfNoBorder" backgroundColor="%s">' % (_W, _H, c["bg"]),
         box((0, 0, 1920, 110), c["card"]),
         '<eLabel position="0,%d" size="%d,%d" backgroundColor="%s" zPosition="1"/>' % (s(106), _W, max(2, s(4)), c["hdr"]),
         wid("s_title", (60, 20, 1000, 70), font=46, fg="#FFFFFF", valign="center"),
@@ -1629,7 +1628,7 @@ class SettingsScreen(Screen):
 def run_skin():
     c = tc()
     parts = [
-        '<screen name="E2StoreRun" position="0,0" size="%d,%d" flags="wfNoBorder" backgroundColor="%s">' % (_W, _H, c["bg"]),
+        '<screen name="MajorPanelRun" position="0,0" size="%d,%d" flags="wfNoBorder" backgroundColor="%s">' % (_W, _H, c["bg"]),
         box((0, 0, 1920, 110), c["card"]),
         '<eLabel position="0,%d" size="%d,%d" backgroundColor="%s" zPosition="1"/>' % (s(106), _W, max(2, s(4)), c["hdr"]),
         wid("title", (60, 20, 1800, 70), font=46, fg="#FFFFFF", valign="center"),
@@ -2051,7 +2050,7 @@ def main(session, **kwargs):
 
 
 def menuHook(menuid, **kwargs):
-    """Adds E2 Store Panel to the main Menu of the image."""
+    """Adds Major Enigma Panel to the main Menu of the image."""
     if menuid == "mainmenu":
         return [(TITLE, main, "major_enigma_panel", 1)]
     return []
