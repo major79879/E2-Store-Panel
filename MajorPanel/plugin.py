@@ -64,15 +64,19 @@ except Exception:
 # رابط ملف الأوامر على GitHub (عدّله لو اختلف المسار عندك)
 COMMANDS_URL = "https://raw.githubusercontent.com/major79879/Major-Enigma-Panel/refs/heads/main/MP_Commands.lst"
 PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
+OLD_CACHE_FILES = ("/etc/enigma2/e2store_cache.lst", "/etc/enigma2/modernpanel_cache.lst")  # نسخ قديمة تُحذف تلقائياً
 TITLE = "Major Enigma Panel"
 CREDIT = "By John Kamel"
-# تحديث البانل نفسه (إعادة التثبيت) - ملف installer.sh موجود في جذر المستودع (خارج مجلد MajorPanel)
+# تحديث البانل نفسه (إعادة التثبيت) - ملف installer.sh موجود في جذر المستودع (خارج مجلد E2Store)
 INSTALLER_URL = "https://raw.githubusercontent.com/major79879/Major-Enigma-Panel/refs/heads/main/installer.sh"
 UPDATE_CMD = 'wget -q --no-check-certificate -O - "%s" | /bin/sh -s norestart' % INSTALLER_URL
 SETTINGS_FILE = "/etc/enigma2/majorpanel_settings.json"      # عرض البانل + الثيم المختار
 RUN_LOG = "/tmp/majorpanel_run.log"                          # سجل تشخيصي لشاشة التنفيذ
 ASSET_DIR = "/tmp/majorpanel"                                # صور مؤقتة صغيرة تُحذف عند إغلاق البانل
 ERROR_LOG = "/tmp/majorpanel_error.log"
+JOB_SH = "/tmp/majorpanel_job.sh"                          # سكربت التنفيذ (يخفي الأمر الحقيقي)
+JOB_FILTER = "/tmp/majorpanel_filter.py"
+JOB_RC = "/tmp/majorpanel_rc"
 DEFAULT_SETTINGS = {"view": "list", "theme": "neon_blue", "anim": False}
 # ============================================================================
 
@@ -207,7 +211,7 @@ def setColor(widget, hexcolor):
 
 
 def dlog(msg):
-    """Tiny diagnostic log (/tmp/e2store_run.log) - helps to debug the execution screen."""
+    """Tiny diagnostic log (/tmp/majorpanel_run.log) - helps to debug the execution screen."""
     try:
         with open(RUN_LOG, "a", encoding="utf-8") as f:
             f.write("%s  %s\n" % (time.strftime("%H:%M:%S"), msg))
@@ -511,7 +515,7 @@ def prep_assets(view, theme_key, anim):
             for i, fr in enumerate(fam["frames"] if anim else fam["frames"][:1]):
                 _put("f%02d" % i, fr)
         for kind, data in (a.SEL.get(theme_key) or {}).items():
-            _put("sel_" + kind, data)
+            _put("sel_%s_%s" % (kind, theme_key), data)
         _put("emblem", a.EMBLEM[theme_key])
         seg = a.SEG[theme_key]
         _put("seg_off", seg["off"])
@@ -615,7 +619,7 @@ def sel_attr(kind, w, h):
     """selectionPixmap attribute (neon border) for a list. Pictures are pixel-exact (1920 wide
     desktops only) and exist only for the Modern themes; otherwise the solid color is used."""
     t = T()
-    p = asset_path("sel_" + kind)
+    p = asset_path("sel_%s_%s" % (kind, _state["theme"]))
     if not t["modern"] or s(w) != w or not os.path.isfile(p):
         return ""
     return ' selectionPixmap="%s"' % p
@@ -687,8 +691,10 @@ def buttons_xml(hint_extra=""):
 # --------------------------------- الشاشة الأساسية ---------------------------
 SERVER_OFFLINE_MSG = u"تعذّر الاتصال بسيرفر البانل - تحقق من الإنترنت | Cannot connect to panel server"
 
+# سياقات الأزرار المعتادة فقط. (لا نربط سياقات وضع التلفاز مثل InfobarChannelSelection حتى لا نؤثر
+# على أزرار الاتجاهات بعد الخروج من البانل)
 ACTION_CONTEXTS = ["OkCancelActions", "ColorActions", "DirectionActions", "NavigationActions",
-                   "EPGSelectActions", "MenuActions", "ChannelSelectBaseActions", "InfobarChannelSelection"]
+                   "EPGSelectActions", "MenuActions"]
 
 
 class PanelBase(Screen):
@@ -744,17 +750,13 @@ class PanelBase(Screen):
                 "left": self.keyLeft, "right": self.keyRight,
                 "up": self.keyUp, "down": self.keyDown,
                 "pageUp": self.prevCat, "pageDown": self.nextCat,
-                "channelUp": self.nextCat, "channelDown": self.prevCat,
-                "switchChannelUp": self.nextCat, "switchChannelDown": self.prevCat,
-                "nextBouquet": self.nextCat, "prevBouquet": self.prevCat,
             }, -1)
 
+        self.closing = False
         self.tickCount = 0
         self.tickTimer = self.makeTimer(self.onTick)        # مؤقت واحد: الساعة كل 2 ثانية والإحصاءات كل 4
         self.titleTimer = self.makeTimer(self.titleTick)    # للحركة فقط (اختياري)
-        for tm in (self.tickTimer, self.titleTimer):
-            self.onClose.append(tm.stop)
-        self.onClose.append(self.freeMemory)
+        self.onClose.append(self.releaseAll)
         self.onExecBegin.append(self.resumeTitle)
         self.onExecEnd.append(self.pauseTitle)
         self.onLayoutFinish.append(self.start)
@@ -813,6 +815,23 @@ class PanelBase(Screen):
         self.updateClock()
         if self.tickCount % 2 == 0:
             self.updateStats()
+
+    def releaseAll(self):
+        """On close: stop and DISCONNECT the timers (so the screen can be freed), unbind the keys
+        explicitly (nothing may stay bound after the panel is closed) and free pictures / data."""
+        self.closing = True
+        for tm in (self.tickTimer, self.titleTimer):
+            try:
+                tm.stop()
+                del tm.callback[:]
+            except Exception:
+                pass
+        self._tconn = []
+        try:
+            self["actions"].execEnd()
+        except Exception:
+            pass
+        self.freeMemory()
 
     def freeMemory(self):
         """Release pictures and data as soon as the screen closes."""
@@ -885,12 +904,15 @@ class PanelBase(Screen):
         d.addErrback(self.onlineFail)
 
     def onlineOK(self, result):
+        if self.closing:
+            return
         text, src = result
         self.setServer("online")
         self.setData(text)
 
     def onlineFail(self, failure):
-        self.setServer("offline")
+        if not self.closing:
+            self.setServer("offline")
 
     def setServer(self, state):
         """state: online | offline | connecting  (shown at the top as: Server: Online ...)"""
@@ -1077,7 +1099,7 @@ class PanelBase(Screen):
     def confirmed(self, answer):
         it = self.currentItem()
         if answer and it:
-            self.session.open(RunScreen, it)
+            run_item(self.session, it, u"Installing")
 
     # ------------------------- الإعدادات وتحديث البانل -----------------------
     def openSettings(self):
@@ -1090,20 +1112,19 @@ class PanelBase(Screen):
     def askUpdate(self):
         self.session.openWithCallback(
             self.confirmUpdate, MessageBox,
-            u"تحديث E2 Store Panel بالكامل (إعادة التثبيت)؟\nUpdate / reinstall the whole panel now?",
+            u"تحديث Major Enigma Panel بالكامل (إعادة التثبيت)؟\nUpdate / reinstall the whole panel now?",
             MessageBox.TYPE_YESNO)
 
     def confirmUpdate(self, answer):
         if answer:
-            self.session.open(RunScreen, update_item())
+            run_item(self.session, update_item(), u"Updating")
 
     def exit(self):
         self.close()
 
 
 def update_item():
-    return {"name": u"تحديث البانل | Update E2 Store Panel", "cmd": UPDATE_CMD,
-            "author": "", "desc": "", "cat": ""}
+    return {"name": u"Major Enigma Panel", "cmd": UPDATE_CMD, "author": "", "desc": "", "cat": ""}
 
 
 # --------------------------------- عرض القائمة (List) -------------------------
@@ -1117,7 +1138,7 @@ class ListPanel(PanelBase):
         lst = ('<widget name="%s" %s backgroundColor="%s" backgroundColorSelected="%s" foregroundColor="%s" '
                'foregroundColorSelected="#FFFFFF" scrollbarMode="showNever"%s transparent="0" zPosition="2"/>')
         parts = [
-            '<screen name="E2StoreList" position="0,0" size="%d,%d" flags="wfNoBorder" backgroundColor="%s">' % (_W, _H, c["bg"]),
+            '<screen name="MajorPanelList" position="0,0" size="%d,%d" flags="wfNoBorder" backgroundColor="%s">' % (_W, _H, c["bg"]),
             header_xml(),
             box((40, 135, 420, 800), c["card"], 24),
             lst % ("cats", rect(55, 150, 390, 770), c["card"], c["sel"], c["text"], sa_c),
@@ -1257,13 +1278,13 @@ class GridPanel(PanelBase):
     so the screen has only a handful of widgets."""
     DEV = device_layout(125, 110)
     PIC = (1340, DEV["pic"][0], 510, 110)
-    HINT = ("ARROWS : move     CH+ / CH- (or UP / DOWN at the edge) : sections     OK : install     "
+    HINT = ("ARROWS : move     UP / DOWN at the edge (or PAGE keys) : sections     OK : install     "
             "BLUE : refresh     MENU : settings")
 
     def buildSkin(self):
         c = tc()
         parts = [
-            '<screen name="E2StoreGrid" position="0,0" size="%d,%d" flags="wfNoBorder" backgroundColor="%s">' % (_W, _H, c["bg"]),
+            '<screen name="MajorPanelGrid" position="0,0" size="%d,%d" flags="wfNoBorder" backgroundColor="%s">' % (_W, _H, c["bg"]),
             header_xml(),
             # --- منطقة العنوان والتفاصيل ---
             wid("g_cap", (40, 135, 700, 34), font=24, fg=c["acc"], bg=c["bg"]),
@@ -1314,8 +1335,8 @@ class GridPanel(PanelBase):
 
     # ------------------------------ بدء التشغيل ------------------------------
     def start(self):
-        self.tilePix = pix("sel_tile")
-        self.tileBgPix = pix("sel_tile_bg")
+        self.tilePix = pix("sel_tile_%s" % _state["theme"])
+        self.tileBgPix = pix("sel_tile_bg_%s" % _state["theme"])
         try:
             emb = pix("emblem")
             if emb and self["emb_bg"].instance:
@@ -1512,6 +1533,7 @@ class SettingsScreen(Screen):
             {"ok": self.ok, "green": self.save, "red": self.cancel, "cancel": self.cancel,
              "left": self.left, "right": self.right, "up": self.up, "down": self.down}, -1)
         self.onLayoutFinish.append(self.refreshAll)
+        self.onClose.append(self.releaseKeys)
 
     def themeKey(self):
         return "classic" if self.style == "classic" else self.color
@@ -1578,14 +1600,20 @@ class SettingsScreen(Screen):
         if self.current() == "update":
             self.session.openWithCallback(
                 self.confirmUpdate, MessageBox,
-                u"تحديث E2 Store Panel بالكامل (إعادة التثبيت)؟\nUpdate / reinstall the whole panel now?",
+                u"تحديث Major Enigma Panel بالكامل (إعادة التثبيت)؟\nUpdate / reinstall the whole panel now?",
                 MessageBox.TYPE_YESNO)
         else:
             self.save()
 
     def confirmUpdate(self, answer):
         if answer:
-            self.session.open(RunScreen, update_item())
+            run_item(self.session, update_item(), u"Updating")
+
+    def releaseKeys(self):
+        try:
+            self["actions"].execEnd()
+        except Exception:
+            pass
 
     def save(self):
         theme = self.themeKey()
@@ -1711,6 +1739,12 @@ class RunScreen(Screen):
             self._pollConn = self.pollTimer.timeout.connect(self.poll)
         self.onLayoutFinish.append(self.start)
         self.onClose.append(self.cleanup)
+
+    def releaseKeys(self):
+        try:
+            self["actions"].execEnd()
+        except Exception:
+            pass
 
     # ------------------------------ السجل -----------------------------------
     def feed(self, text):
@@ -1866,8 +1900,10 @@ class RunScreen(Screen):
         self.closed = True
         try:
             self.pollTimer.stop()
+            del self.pollTimer.callback[:]
         except Exception:
             pass
+        self.releaseKeys()
         if not self.done:
             self.killProcess()
         if self.container is not None:
@@ -1876,6 +1912,91 @@ class RunScreen(Screen):
                     del getattr(self.container, sig)[:]
                 except Exception:
                     pass
+
+
+# ---------------- تنفيذ الأوامر داخل شاشة Console الخاصة بالصورة ----------------
+# الأمر الحقيقي يُكتب في سكربت مؤقت، فلا يظهر في الشاشة إلا:  sh /tmp/majorpanel_job.sh
+# (والروابط في الناتج تُستبدل بـ [link hidden])
+FILTER_PY = (
+    "import os, re, sys\n"
+    "rx = re.compile(rb\"(?:https?|ftps?)://[^\\s'\\\"<>]+\", re.I)\n"
+    "out = sys.stdout.buffer\n"
+    "while True:\n"
+    "    d = os.read(0, 4096)\n"
+    "    if not d:\n"
+    "        break\n"
+    "    out.write(rx.sub(b'[link hidden]', d))\n"
+    "    out.flush()\n"
+)
+
+
+def write_job(cmd):
+    py = shutil.which("python3") or shutil.which("python")
+    body = "{ (\n%s\n) 2>&1; echo $? > %s; }" % (cmd, JOB_RC)
+    if py:
+        with open(JOB_FILTER, "w", encoding="utf-8") as f:
+            f.write(FILTER_PY)
+        body += " | %s -u %s" % (py, JOB_FILTER)
+    lines = ["#!/bin/sh", "rm -f %s" % JOB_RC, body,
+             "rc=$(cat %s 2>/dev/null)" % JOB_RC, '[ -z "$rc" ] && rc=1', 'echo ""',
+             'if [ "$rc" = "0" ]; then echo "=== FINISHED OK ==="; '
+             'else echo "=== FINISHED WITH ERRORS (code $rc) ==="; fi',
+             "exit $rc"]
+    with open(JOB_SH, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    os.chmod(JOB_SH, 0o755)
+
+
+def job_result():
+    try:
+        with open(JOB_RC, "r") as f:
+            return f.read().strip()
+    except Exception:
+        return ""
+
+
+def job_cleanup():
+    for path in (JOB_SH, JOB_FILTER, JOB_RC):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
+def job_finished(session):
+    rc = job_result()
+    job_cleanup()
+    if rc != "0":
+        return
+
+    def answer(yes):
+        if yes:
+            session.open(TryQuitMainloop, 3)
+    text = u"تم التنفيذ بنجاح. إعادة تشغيل الواجهة الآن؟\nDone. Restart GUI now?"
+    try:
+        session.openWithCallback(answer, MessageBox, text, MessageBox.TYPE_YESNO, default=False)
+    except TypeError:
+        session.openWithCallback(answer, MessageBox, text, MessageBox.TYPE_YESNO)
+
+
+def run_item(session, item, verb=u"Installing"):
+    """Runs the item's command inside the image's own Console screen (terminal look).
+    Falls back to our own terminal screen if Console is not available."""
+    try:
+        from Screens.Console import Console
+    except Exception:
+        Console = None
+    if Console is not None:
+        try:
+            write_job(item["cmd"])
+            session.openWithCallback(lambda *a: job_finished(session), Console,
+                                     title=u"%s %s" % (verb, item["name"]), cmdlist=["sh %s" % JOB_SH])
+            return True
+        except Exception as e:
+            dlog_error("Console run failed: %s" % e)
+            job_cleanup()
+    session.open(RunScreen, item)
+    return False
 
 
 # --------------------------------- التسجيل -----------------------------------
@@ -1916,10 +2037,10 @@ def launch(session):
     try:
         if opened is None:
             cleanup_assets()
-            session.open(MessageBox, u"تعذّر تشغيل E2 Store - راجع /tmp/e2store_error.log\nE2 Store could not start.",
+            session.open(MessageBox, u"تعذّر تشغيل Major Panel - راجع /tmp/majorpanel_error.log\nMajor Panel could not start.",
                          MessageBox.TYPE_ERROR, timeout=10)
         elif opened is not order[0]:
-            session.open(MessageBox, u"تعذّر فتح عرض Grid فعُدنا إلى List.\nGrid view failed - using List.\n(/tmp/e2store_error.log)",
+            session.open(MessageBox, u"تعذّر فتح عرض Grid فعُدنا إلى List.\nGrid view failed - using List.\n(/tmp/majorpanel_error.log)",
                          MessageBox.TYPE_INFO, timeout=8)
     except Exception as e:
         dlog_error("message box failed: %s" % e)
@@ -1932,7 +2053,7 @@ def main(session, **kwargs):
 def menuHook(menuid, **kwargs):
     """Adds E2 Store Panel to the main Menu of the image."""
     if menuid == "mainmenu":
-        return [(TITLE, main, "e2store_panel", 1)]
+        return [(TITLE, main, "major_enigma_panel", 1)]
     return []
 
 
