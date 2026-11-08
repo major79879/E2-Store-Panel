@@ -64,6 +64,7 @@ except Exception:
 # رابط ملف الأوامر على GitHub (عدّله لو اختلف المسار عندك)
 COMMANDS_URL = "https://raw.githubusercontent.com/major79879/Major-Enigma-Panel/refs/heads/main/MP_Commands.lst"
 PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
+OLD_CACHE_FILES = ("/etc/enigma2/e2store_cache.lst", "/etc/enigma2/modernpanel_cache.lst")  # نسخ قديمة تُحذف تلقائياً
 TITLE = "Major Enigma Panel"
 CREDIT = "By John Kamel"
 # تحديث البانل نفسه (إعادة التثبيت) - ملف installer.sh موجود في جذر المستودع (خارج مجلد MajorPanel)
