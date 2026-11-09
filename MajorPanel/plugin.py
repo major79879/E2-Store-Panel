@@ -2022,7 +2022,37 @@ class SplashScreen(Screen):
 _relaunch = {}
 
 
+_diag = {}
+
+
+def diag_after_close(session, tag):
+    """Writes (to RUN_LOG) the state of the keys of the screen that comes back after the panel closes.
+    Compare the log of a working run with a broken one."""
+    def report():
+        try:
+            cur = session.current_dialog
+            dlog("[%s] after close: current=%s shown=%s in_exec=%s stack=%s" % (
+                tag, type(cur).__name__, getattr(cur, "shown", "?"), getattr(session, "in_exec", "?"),
+                [type(d[0]).__name__ for d in session.dialog_stack]))
+            vals = cur.values() if callable(getattr(cur, "values", None)) else []
+            for v in vals:
+                if hasattr(v, "contexts") and hasattr(v, "actions"):
+                    dlog("[%s]   ActionMap %s prio=%s active=%s enabled=%s keys=%s" % (
+                        tag, list(v.contexts), getattr(v, "prio", "?"), getattr(v, "execActive", "?"),
+                        getattr(v, "enabled", "?"), sorted(v.actions)[:12]))
+        except Exception as e:
+            dlog("diag failed: %s" % e)
+    tm = eTimer()
+    try:
+        tm.callback.append(report)
+    except AttributeError:
+        _diag["conn"] = tm.timeout.connect(report)
+    _diag["timer"] = tm
+    tm.start(1200, True)
+
+
 def onPanelClosed(session, result=None):
+    diag_after_close(session, "LIST")
     if result == "reopen":
         # نترك للواجهة لحظة لتحرير الشاشة القديمة قبل بناء الجديدة (يخفف ذروة الذاكرة)
         gc.collect()
