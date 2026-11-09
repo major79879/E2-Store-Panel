@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # ---------------------------------------------------------------------------
 #  Major Enigma Panel  -  لوحة أوامر لينوكس بواجهة عصرية لـ Enigma2 (OpenATV 7.6 / 8)
-#  Python 3 only.  يقرأ ملف الأوامر من GitHub ويعرضه بعرض List أو Grid وبعدة ثيمات.
+#  Python 3 only.  يقرأ ملف الأوامر من GitHub ويعرضه بعرض List وبعدة ثيمات.
 #  الصور المدمجة موجودة في الملف assets.py (تُحمَّل عند فتح البانل فقط).
 # ---------------------------------------------------------------------------
 import base64
@@ -68,7 +68,6 @@ except Exception:
 GITHUB_RAW = "https://raw.githubusercontent.com/major79879/Major-Enigma-Panel/refs/heads/main"
 COMMANDS_URL = GITHUB_RAW + "/MP_Commands.lst"            # ملف الأوامر
 PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
-OLD_CACHE_FILES = ("/etc/enigma2/e2store_cache.lst", "/etc/enigma2/modernpanel_cache.lst")  # نسخ قديمة تُحذف تلقائياً
 TITLE = "Major Enigma Panel"
 CREDIT = "By John Kamel"
 # تحديث البانل نفسه (إعادة التثبيت) - ملف installer.sh موجود في جذر المستودع (خارج مجلد MajorPanel)
@@ -78,7 +77,7 @@ SETTINGS_FILE = "/etc/enigma2/majorpanel_settings.json"      # عرض البان
 RUN_LOG = "/tmp/majorpanel_run.log"                          # سجل تشخيصي لشاشة التنفيذ
 ASSET_DIR = "/tmp/majorpanel"                                # صور مؤقتة صغيرة تُحذف عند إغلاق البانل
 ERROR_LOG = "/tmp/majorpanel_error.log"
-DEFAULT_SETTINGS = {"view": "list", "theme": "neon_blue", "anim": False, "mainmenu": True}
+DEFAULT_SETTINGS = {"theme": "blue_fire", "anim": False, "mainmenu": True, "splash": True}
 # ============================================================================
 
 # ---- مصدر واحد لتعريف الثيمات (يُستخدم في plugin.py وفي توليد الصور) ----
@@ -142,33 +141,75 @@ THEMES = {
         stops=((0, 240, 208), (0, 200, 255), (90, 160, 255), (160, 120, 255), (255, 100, 200)),
         title_set="green", sel_key="aqua",
         fill=((6, 66, 72), (10, 108, 112)), border=(0, 240, 208), **_BTN, **_OKS),
+    "blue_fire": dict(
+        name="Blue Fire", modern=True,
+        bg="#050A1C", card="#0A1430", card2="#0E1B3F", line="#223A6E", text="#EAF2FF", muted="#8397BC",
+        accent="#2FA8FF", second="#FF9A3D", sel="#14346E", hdr="#2FA8FF", term="#030715",
+        stops=((30, 150, 255), (90, 120, 255), (170, 100, 230), (255, 130, 90), (255, 170, 50)),
+        title_set="dual", sel_key="blue_fire",
+        fill=((6, 22, 60), (30, 18, 30)), border=(47, 168, 255), **_BTN, **_OKS),
+    "twilight": dict(
+        name="Twilight", modern=True,
+        bg="#090717", card="#130F2E", card2="#1A1440", line="#342B6B", text="#F0EEFF", muted="#9490C4",
+        accent="#8F86FF", second="#FFB347", sel="#2E2470", hdr="#8F86FF", term="#05040E",
+        stops=((90, 120, 255), (150, 100, 255), (220, 100, 200), (255, 140, 90), (255, 190, 70)),
+        title_set="dual", sel_key="twilight",
+        fill=((16, 12, 52), (36, 18, 36)), border=(143, 134, 255), **_BTN, **_OKS),
+    "ember_night": dict(
+        name="Ember Night", modern=True,
+        bg="#080A18", card="#131528", card2="#1B1D38", line="#3A3560", text="#FFF3E8", muted="#A99EB5",
+        accent="#FF9F43", second="#4DB2FF", sel="#5A3410", hdr="#FF9F43", term="#04050E",
+        stops=((255, 159, 67), (255, 110, 80), (200, 90, 170), (110, 110, 240), (77, 178, 255)),
+        title_set="dual", sel_key="ember_night",
+        fill=((38, 18, 6), (8, 20, 56)), border=(255, 159, 67), **_BTN, **_OKS),
+    "ocean_sun": dict(
+        name="Ocean Sunset", modern=True,
+        bg="#04101A", card="#08202E", card2="#0C2B3C", line="#1A4A60", text="#E8FAFF", muted="#7FAEC0",
+        accent="#1FD1C6", second="#FF8A65", sel="#0C4A5C", hdr="#1FD1C6", term="#020A10",
+        stops=((31, 209, 198), (60, 150, 240), (150, 110, 240), (255, 120, 150), (255, 150, 90)),
+        title_set="cool", sel_key="ocean_sun",
+        fill=((4, 34, 46), (40, 18, 24)), border=(31, 209, 198), **_BTN, **_OKS),
+    "aurora": dict(
+        name="Aurora", modern=True,
+        bg="#040F10", card="#08202A", card2="#0D2C38", line="#1C4A5C", text="#E8FFFB", muted="#7FB0B0",
+        accent="#4DF0C0", second="#9B8CFF", sel="#0B4A4A", hdr="#4DF0C0", term="#020A0C",
+        stops=((77, 240, 192), (60, 200, 255), (110, 150, 255), (170, 120, 255), (255, 130, 200)),
+        title_set="green", sel_key="aurora",
+        fill=((4, 40, 36), (24, 12, 52)), border=(77, 240, 192), **_BTN, **_OKS),
+    "royal_gold": dict(
+        name="Royal Gold", modern=True,
+        bg="#060A18", card="#0E1630", card2="#141E40", line="#2E3A66", text="#FFF7E0", muted="#9AA3BD",
+        accent="#F5C451", second="#5AA9FF", sel="#3A3010", hdr="#F5C451", term="#03060F",
+        stops=((245, 196, 81), (255, 160, 60), (255, 120, 90), (120, 140, 255), (90, 170, 255)),
+        title_set="warm", sel_key="royal_gold",
+        fill=((8, 16, 46), (44, 34, 8)), border=(245, 196, 81), **_BTN, **_OKS),
 }
-MODERN_ORDER = ["neon_blue", "orange", "yellow", "green", "purple", "red", "aqua"]
+MODERN_ORDER = ["blue_fire", "twilight", "ember_night", "ocean_sun", "aurora", "royal_gold",
+                "neon_blue", "orange", "yellow", "green", "purple", "red", "aqua"]
 
 _state = dict(DEFAULT_SETTINGS)
 
 
 def load_settings():
-    """Reads view/theme from disk into _state and returns it."""
+    """Reads theme / animation / menu settings from disk into _state and returns it."""
     data = {}
     try:
         with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
     except Exception:
         pass
-    view = data.get("view", DEFAULT_SETTINGS["view"])
     theme = data.get("theme", DEFAULT_SETTINGS["theme"])
-    _state["view"] = view if view in ("list", "grid") else DEFAULT_SETTINGS["view"]
     _state["theme"] = theme if theme in THEMES else DEFAULT_SETTINGS["theme"]
     _state["anim"] = bool(data.get("anim", DEFAULT_SETTINGS["anim"]))
     _state["mainmenu"] = bool(data.get("mainmenu", DEFAULT_SETTINGS["mainmenu"]))
+    _state["splash"] = bool(data.get("splash", DEFAULT_SETTINGS["splash"]))
     return _state
 
 
-def save_settings(view, theme, anim=False, mainmenu=True):
+def save_settings(theme, anim=False, mainmenu=True, splash=True):
     try:
         with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
-            json.dump({"view": view, "theme": theme, "anim": bool(anim), "mainmenu": bool(mainmenu)}, f)
+            json.dump({"theme": theme, "anim": bool(anim), "mainmenu": bool(mainmenu), "splash": bool(splash)}, f)
         return True
     except Exception:
         return False
@@ -258,14 +299,6 @@ def _fetch(url, timeout=20):
                   headers={"User-Agent": "MajorPanel/1.0", "Cache-Control": "no-cache"})
     return urlopen(req, timeout=timeout, context=ctx).read().decode("utf-8", "ignore")
 
-
-def remove_old_cache():
-    for path in OLD_CACHE_FILES:
-        try:
-            if os.path.isfile(path):
-                os.remove(path)
-        except Exception:
-            pass
 
 
 def load_online():
@@ -519,8 +552,8 @@ def _put(name, data):
         f.write(base64.b64decode(data))
 
 
-def prep_assets(view, theme_key, anim):
-    """Extracts only the pictures needed for this view / theme / animation setting."""
+def prep_assets(theme_key, anim, splash=False):
+    """Extracts only the pictures needed for this theme / animation setting."""
     try:
         from . import assets as a
     except Exception as e:
@@ -533,6 +566,8 @@ def prep_assets(view, theme_key, anim):
         os.makedirs(ASSET_DIR, exist_ok=True)
         th = THEMES.get(theme_key) or THEMES["neon_blue"]
         _put("logo", a.LOGO)
+        if splash:
+            _put("splash", a.SPLASH)
         _put("box_default", a.DEFAULT_BOX)
         if th["modern"]:
             glow = a.LOGO_GLOW
@@ -547,14 +582,12 @@ def prep_assets(view, theme_key, anim):
                 _put("f%02d" % i, fr)
         for kind, data in (a.SEL.get(theme_key) or {}).items():
             _put("sel_%s_%s" % (kind, theme_key), data)
-        _put("emblem", a.EMBLEM[theme_key])
         seg = a.SEG[theme_key]
         _put("seg_off", seg["off"])
         for i, d_ in enumerate(seg["on"]):
             _put("seg_on%d" % i, d_)
-        for size in ((64, 96) if view == "grid" else (48,)):
-            for key, data in getattr(a, "ICONS%d" % size).items():
-                _put("ic%d_%s" % (size, key), data)
+        for key, data in a.ICONS48.items():
+            _put("ic48_%s" % key, data)
         ok = True
     except Exception as e:
         dlog_error("prep_assets failed: %s" % e)
@@ -593,7 +626,7 @@ def icon_key(cat_name):
 
 
 def get_icon(cat_name, size=48):
-    """Pixmap of a category icon. size: 48 (list) / 64 (tiles) / 96 (big emblem).
+    """Pixmap of a category icon (48 px).
     A file icons/<name>.png next to plugin.py overrides the built-in one."""
     key = icon_key(cat_name)
     ck = (key, size)
@@ -729,9 +762,9 @@ ACTION_CONTEXTS = ["OkCancelActions", "ColorActions", "DirectionActions", "Navig
 
 
 class PanelBase(Screen):
-    """Everything shared by the List and Grid views: header, clock, server state, device info
+    """Everything shared by the panel screens: header, clock, server state, device info
     (RAM / HDD / IP ...), animated title, loading the commands, search, install, settings."""
-    DEV = device_layout(585, 80)          # lower-right card (overridden by the Grid view)
+    DEV = device_layout(585, 80)          # lower-right card
     PIC = (1340, 640, 510, 80)
     HINT = ""
 
@@ -837,7 +870,6 @@ class PanelBase(Screen):
         self.updateStats()
         self.updateClock()
         self.tickTimer.start(2000, False)
-        remove_old_cache()
         self.refresh()
 
     def onTick(self):
@@ -1294,228 +1326,9 @@ class ListPanel(PanelBase):
         self.updateDetails()
 
 
-# --------------------------------- عرض الشبكة (Grid) -------------------------
-GRID_COLS, GRID_ROWS = 8, 2
-GRID_PER = GRID_COLS * GRID_ROWS
-TILE_W, TILE_H = 218, 170
-TILE_PITCH, TILE_YPITCH = 230, 184
-STAT_LABELS = ("SECTIONS", "IN SECTION", "TOTAL", "UPTIME")
-
-
-def get_uptime():
-    try:
-        return float(read_file("/proc/uptime").split()[0])
-    except Exception:
-        return 0.0
-
-
-def fmt_uptime(sec):
-    sec = int(sec)
-    d, h, m = sec // 86400, (sec % 86400) // 3600, (sec % 3600) // 60
-    return "%dd %dh" % (d, h) if d else "%dh %02dm" % (h, m)
-
-
-class GridPanel(PanelBase):
-    """Light Grid view: ONE list widget draws the 16 tiles of the page (pictures + text),
-    so the screen has only a handful of widgets."""
-    DEV = device_layout(125, 110)
-    PIC = (1340, DEV["pic"][0], 510, 110)
-    HINT = ("ARROWS : move     UP / DOWN at the edge (or PAGE keys) : sections     OK : install     "
-            "BLUE : refresh     MENU : settings")
-
-    def buildSkin(self):
-        c = tc()
-        parts = [
-            '<screen name="MajorPanelGrid" position="0,0" size="%d,%d" flags="wfNoBorder" backgroundColor="%s">' % (_W, _H, c["bg"]),
-            header_xml(),
-            # --- منطقة العنوان والتفاصيل ---
-            wid("g_cap", (40, 135, 700, 34), font=24, fg=c["acc"], bg=c["bg"]),
-            wid("g_sec", (40, 170, 960, 76), font=56, fg="#FFFFFF", bg=c["bg"], valign="center"),
-            wid("g_name", (40, 252, 960, 46), font=36, fg=c["text"], bg=c["bg"], valign="center"),
-            wid("g_author", (40, 298, 960, 34), font=26, fg=c["second"], bg=c["bg"]),
-            wid("g_desc", (40, 336, 960, 96), font=30, fg=c["text"], bg=c["bg"], halign="right", valign="top"),
-            # --- بطاقة الأرقام ---
-            box((40, 446, 960, 74), c["card"], 18),
-        ]
-        for i in range(4):
-            x = 40 + i * 240
-            parts.append(wid("st%d_v" % i, (x, 450, 240, 40), font=36, fg="#FFFFFF", halign="center", valign="center"))
-            parts.append(wid("st%d_l" % i, (x, 490, 240, 26), font=18, fg=c["muted"], halign="center", valign="center"))
-            if i:
-                parts.append(box((x, 458, 2, 54), c["line"], z=2))
-        parts += [
-            # --- الشعار الكبير للقسم (حلقة جاهزة كصورة + أيقونة) ---
-            pixw("emb_bg", (1022, 142, 256, 256), z=1),
-            pixw("emb_ic", (1102, 222, 96, 96), z=3),
-            # --- معلومات الجهاز ---
-            box((1310, 125, 570, 395), c["card"], 24),
-            device_xml(self.DEV),
-            # --- كل البلاطات في قائمة واحدة ---
-            '<widget name="tiles" %s backgroundColor="%s" backgroundColorSelected="%s" foregroundColor="%s" '
-            'foregroundColorSelected="%s" scrollbarMode="showNever" transparent="0" zPosition="2"/>' % (
-                rect(40, 540, 1840, 368), c["bg"], c["bg"], c["text"], c["text"]),
-            wid("g_page", (40, 912, 800, 34), font=22, fg=c["muted"], bg=c["bg"]),
-            buttons_xml(),
-            '</screen>',
-        ]
-        return "\n".join(parts)
-
-    def createViewWidgets(self):
-        for n in ("g_cap", "g_sec", "g_name", "g_author", "g_desc", "g_page"):
-            self[n] = Label("")
-        for i in range(4):
-            self["st%d_v" % i] = Label("")
-            self["st%d_l" % i] = Label(STAT_LABELS[i])
-        self["emb_bg"] = Pixmap()
-        self["emb_ic"] = Pixmap()
-        self["tiles"] = MenuList([], content=eListboxPythonMultiContent)
-        self["tiles"].l.setFont(0, gFont("Regular", s(22)))
-        self["tiles"].l.setItemHeight(s(TILE_YPITCH))
-        self.sel = 0
-        self.tilePix = None
-        self.tileBgPix = None
-
-    # ------------------------------ بدء التشغيل ------------------------------
-    def start(self):
-        self.tilePix = pix("sel_tile_%s" % _state["theme"])
-        self.tileBgPix = pix("sel_tile_bg_%s" % _state["theme"])
-        try:
-            emb = pix("emblem")
-            if emb and self["emb_bg"].instance:
-                self["emb_bg"].instance.setPixmap(emb)
-                self["emb_bg"].instance.show()
-        except Exception:
-            pass
-        PanelBase.start(self)
-
-    def freeMemory(self):
-        self.tilePix = None
-        self.tileBgPix = None
-        PanelBase.freeMemory(self)
-
-    # --------------------------------- العرض ---------------------------------
-    def buildView(self, keepCat=None):
-        self.categoriesFor(keepCat)
-        self.sel = 0
-        self.refreshGrid()
-
-    def items(self):
-        return self.cats[self.catIdx][1] if self.cats else []
-
-    def currentItem(self):
-        items = self.items()
-        return items[self.sel] if 0 <= self.sel < len(items) else None
-
-    def buildRows(self):
-        items = self.items()
-        n = len(items)
-        start = (self.sel // GRID_PER) * GRID_PER
-        cat = self.cats[self.catIdx][0] if self.cats else ""
-        icon = get_icon(cat, 64) if cat else None
-        txt = hexint(self.t["text"])
-        rows = []
-        for r in range(GRID_ROWS):
-            row = [r]
-            for c in range(GRID_COLS):
-                idx = start + r * GRID_COLS + c
-                if idx >= n:
-                    break
-                x = s(c * TILE_PITCH)
-                bgp = self.tilePix if idx == self.sel else self.tileBgPix
-                if bgp:
-                    row.append(MultiContentEntryPixmapAlphaBlend(
-                        pos=(x, 0), size=(s(TILE_W), s(TILE_H)), png=bgp, flags=BT_SCALE))
-                if icon:
-                    row.append(MultiContentEntryPixmapAlphaBlend(
-                        pos=(x + s(77), s(22)), size=(s(64), s(64)), png=icon, flags=BT_SCALE))
-                row.append(MultiContentEntryText(
-                    pos=(x + s(8), s(98)), size=(s(TILE_W - 16), s(66)), font=0,
-                    flags=RT_HALIGN_CENTER | RT_VALIGN_TOP | RT_WRAP, text=items[idx]["name"],
-                    color=txt, color_sel=txt))
-            rows.append(row)
-        self["tiles"].setList(rows)
-        self["tiles"].moveToIndex(0)
-
-    def refreshGrid(self):
-        n = len(self.items())
-        self.sel = min(self.sel, max(n - 1, 0))
-        self.buildRows()
-        self.updateHero()
-
-    def updateHero(self):
-        items = self.items()
-        n = len(items)
-        cat = self.cats[self.catIdx][0] if self.cats else ""
-        self["g_cap"].setText("SECTION %02d / %02d" % (self.catIdx + 1, len(self.cats)) if self.cats else "")
-        self["g_sec"].setText(cat.upper())
-        it = self.currentItem()
-        if it:
-            self["g_name"].setText(it["name"])
-            self["g_author"].setText((u"by " + it["author"]) if it["author"] else it["cat"])
-            self["g_desc"].setText(it["desc"] or u"—")
-        else:
-            self["g_name"].setText("")
-            self["g_author"].setText("")
-            self["g_desc"].setText(u"لا توجد نتائج | No results" if self.query else "")
-        pages = max(1, (n + GRID_PER - 1) // GRID_PER)
-        self["g_page"].setText("PAGE %d/%d     %d plugins" % (self.sel // GRID_PER + 1, pages, n) if n else "")
-        try:
-            big = get_icon(cat, 96) if cat else None
-            if big and self["emb_ic"].instance:
-                self["emb_ic"].instance.setPixmap(big)
-                self["emb_ic"].instance.show()
-        except Exception:
-            pass
-        total = sum(len(i) for _, i in self.allcats)
-        self["st0_v"].setText(str(len(self.allcats)))
-        self["st1_v"].setText(str(n))
-        self["st2_v"].setText(str(total))
-        self["st3_v"].setText(fmt_uptime(get_uptime()))
-
-    def extraStats(self):
-        try:
-            self["st3_v"].setText(fmt_uptime(get_uptime()))
-        except Exception:
-            pass
-
-    # -------------------------------- التنقل ---------------------------------
-    def onCatChanged(self):
-        self.sel = 0
-        self.refreshGrid()
-
-    def moveSel(self, delta):
-        n = len(self.items())
-        if not n:
-            return
-        new = min(max(self.sel + delta, 0), n - 1)
-        if new == self.sel:
-            return
-        self.sel = new
-        self.buildRows()
-        self.updateHero()
-
-    def keyLeft(self):
-        self.moveSel(-1)
-
-    def keyRight(self):
-        self.moveSel(1)
-
-    def keyUp(self):
-        if self.sel < GRID_COLS and len(self.cats) > 1:         # أعلى صف: القسم السابق
-            self.moveCat(-1)
-        else:
-            self.moveSel(-GRID_COLS)
-
-    def keyDown(self):
-        n = len(self.items())
-        if n and self.sel // GRID_COLS >= (n - 1) // GRID_COLS and len(self.cats) > 1:   # آخر صف: القسم التالي
-            self.moveCat(1)
-        else:
-            self.moveSel(GRID_COLS)
-
 
 # --------------------------------- شاشة الإعدادات -----------------------------
-SETTINGS_ROWS = ("view", "style", "color", "anim", "mainmenu", "update")
+SETTINGS_ROWS = ("style", "color", "anim", "splash", "mainmenu", "update")
 
 
 def settings_skin():
@@ -1552,10 +1365,10 @@ class SettingsScreen(Screen):
         self.skin = settings_skin()
         Screen.__init__(self, session)
         st = load_settings()
-        self.orig = (st["view"], st["theme"], st["anim"])
-        self.view = st["view"]
+        self.orig = (st["theme"], st["anim"])
         self.anim = st["anim"]
         self.mainmenu = st["mainmenu"]
+        self.splash = st["splash"]
         self.style = "classic" if st["theme"] == "classic" else "modern"
         self.color = st["theme"] if st["theme"] != "classic" else MODERN_ORDER[0]
 
@@ -1586,10 +1399,10 @@ class SettingsScreen(Screen):
         txt, mut, acc = hexint(self.t["text"]), hexint(self.t["muted"]), hexint(self.t["accent"])
         modern = self.style == "modern"
         values = (
-            ("View", "List" if self.view == "list" else "Grid", True),
             ("Style", "Classic" if self.style == "classic" else "Modern", True),
             ("Color", THEMES[self.color]["name"] if modern else u"— (Modern only)", modern),
             ("Animation", "On" if self.anim else "Off", True),
+            ("Splash", "On" if self.splash else "Off", True),
             ("Main Menu", "Show" if self.mainmenu else "Hide", True),
             ("Update panel", u"Run  \u25b6", True),
         )
@@ -1617,15 +1430,15 @@ class SettingsScreen(Screen):
 
     def change(self, step):
         row = self.current()
-        if row == "view":
-            self.view = "grid" if self.view == "list" else "list"
-        elif row == "style":
+        if row == "style":
             self.style = "modern" if self.style == "classic" else "classic"
         elif row == "color" and self.style == "modern":
             i = (MODERN_ORDER.index(self.color) + step) % len(MODERN_ORDER)
             self.color = MODERN_ORDER[i]
         elif row == "anim":
             self.anim = not self.anim
+        elif row == "splash":
+            self.splash = not self.splash
         elif row == "mainmenu":
             self.mainmenu = not self.mainmenu
         self.refreshAll()
@@ -1660,8 +1473,8 @@ class SettingsScreen(Screen):
 
     def save(self):
         theme = self.themeKey()
-        changed = (self.view, theme, self.anim) != self.orig     # تغيير القائمة الرئيسية لا يحتاج إعادة فتح
-        save_settings(self.view, theme, self.anim, self.mainmenu)
+        changed = (theme, self.anim) != self.orig     # تغيير القائمة الرئيسية لا يحتاج إعادة فتح
+        save_settings(theme, self.anim, self.mainmenu, self.splash)
         self.close(changed)
 
     def cancel(self):
@@ -1918,10 +1731,6 @@ class RunScreen(Screen):
 
     # ------------------------------ التشغيل ---------------------------------
     def start(self):
-        try:
-            self["log"].instance.setSelectionEnable(0)
-        except Exception:
-            pass
         setColor(self["status"], self.t["warn"])
         self.feed(u"\x1b[1;36m> Starting...\x1b[0m\n\n")
         self.render()
@@ -2110,6 +1919,105 @@ def run_item(session, item, verb=VERB_INSTALL, callback=None):
     session.openWithCallback(callback if callback else (lambda *a: None), RunScreen, item, verb)
 
 
+# --------------------------------- شاشة البداية (Splash) -----------------------
+# تظهر مرة واحدة عند فتح البانل فقط (لا تظهر عند إعادة فتحها بعد تغيير الإعدادات).
+# OK = تخطي والدخول للبانل ، EXIT = إلغاء فتح البانل. يمكن إيقافها من الإعدادات (Splash).
+SPLASH_MS = 1700
+SPLASH_TICK = 40
+
+
+def splash_skin():
+    c = tc()
+    bar_w = 600
+    parts = [
+        '<screen name="MajorPanelSplash" position="0,0" size="%d,%d" flags="wfNoBorder" backgroundColor="%s">' % (_W, _H, c["bg"]),
+        pixw("sp_logo", (780, 150, 360, 360), z=3),
+        pixw("sp_name", (700, 560, 520, 84), z=3),
+        wid("sp_text", (460, 560, 1000, 84), font=56, fg="#FFFFFF", bg=c["bg"], halign="center", valign="center", z=3),
+        wid("sp_by", (460, 655, 1000, 50), font=30, fg=c["muted"], bg=c["bg"], halign="center", valign="center"),
+        box((960 - bar_w // 2, 780, bar_w, 8), c["line"], 4, z=2),
+        '<widget name="sp_bar" %s backgroundColor="%s" cornerRadius="%d" zPosition="3"/>' % (
+            rect(960 - bar_w // 2, 780, 10, 8), c["acc"], s(4)),
+        wid("sp_hint", (460, 820, 1000, 40), font=22, fg=c["muted"], bg=c["bg"], halign="center", valign="center"),
+        '</screen>',
+    ]
+    return "\n".join(parts)
+
+
+class SplashScreen(Screen):
+    def __init__(self, session):
+        self.t = T()
+        self.skin = splash_skin()
+        Screen.__init__(self, session)
+        self["sp_logo"] = Pixmap()
+        self["sp_name"] = Pixmap()
+        self["sp_text"] = Label("")
+        self["sp_by"] = Label(u"By John Kamel")
+        self["sp_bar"] = Label("")
+        self["sp_hint"] = Label(u"OK : skip     EXIT : cancel")
+        self["actions"] = ActionMap(["OkCancelActions"], {"ok": self.skip, "cancel": self.abort}, -1)
+        self.elapsed = 0
+        self.finished = False
+        self.timer = eTimer()
+        try:
+            self.timer.callback.append(self.tick)
+        except AttributeError:
+            self._conn = self.timer.timeout.connect(self.tick)
+        self.onLayoutFinish.append(self.start)
+        self.onClose.append(self.cleanup)
+
+    def start(self):
+        try:
+            logo = pix("splash") or pix("logo")
+            if logo and self["sp_logo"].instance:
+                self["sp_logo"].instance.setPixmap(logo)
+                self["sp_logo"].instance.show()
+            name = pix("f00")                       # الاسم المتدرج (للثيمات الحديثة)
+            if name and self["sp_name"].instance:
+                self["sp_name"].instance.setPixmap(name)
+                self["sp_name"].instance.show()
+            else:
+                self["sp_text"].setText(TITLE)
+        except Exception as e:
+            dlog_error("splash start: %s" % e)
+        self.timer.start(SPLASH_TICK, False)
+
+    def tick(self):
+        if self.finished:
+            return
+        self.elapsed += SPLASH_TICK
+        frac = min(1.0, self.elapsed / float(SPLASH_MS))
+        try:
+            w = max(10, int(s(600) * frac))
+            self["sp_bar"].instance.resize(eSize(w, s(8)))
+        except Exception:
+            pass
+        if frac >= 1.0:
+            self.finish("go")
+
+    def finish(self, result):
+        if self.finished:
+            return
+        self.finished = True
+        self.timer.stop()
+        self.close(result)
+
+    def skip(self):
+        self.finish("go")
+
+    def abort(self):
+        self.finish("cancel")
+
+    def cleanup(self):
+        self.finished = True
+        try:
+            self.timer.stop()
+            del self.timer.callback[:]
+        except Exception:
+            pass
+        release_actions(self["actions"])
+
+
 # --------------------------------- التسجيل -----------------------------------
 _relaunch = {}
 
@@ -2129,35 +2037,41 @@ def onPanelClosed(session, result=None):
         cleanup_assets()                    # لا يبقى أي شيء في /tmp عند الخروج
 
 
-def launch(session):
-    load_settings()
-    order = [GridPanel, ListPanel] if _state["view"] == "grid" else [ListPanel]
-    opened = None
-    for cls in order:
-        prep_assets("grid" if cls is GridPanel else "list", _state["theme"], _state["anim"])
-        try:
-            session.openWithCallback(lambda result=None: onPanelClosed(session, result), cls)
-            opened = cls
-            break
-        except Exception:
-            dlog_error("%s failed:\n%s" % (cls.__name__, traceback.format_exc()))
-            if cls is GridPanel:
-                save_settings("list", _state["theme"], _state["anim"], _state["mainmenu"])      # لا نكرر العطل في كل مرة
-                _state["view"] = "list"
+def open_panel(session):
     try:
-        if opened is None:
+        session.openWithCallback(lambda result=None: onPanelClosed(session, result), ListPanel)
+    except Exception:
+        dlog_error("ListPanel failed:\n%s" % traceback.format_exc())
+        try:
             cleanup_assets()
             session.open(MessageBox, u"تعذّر تشغيل Major Panel - راجع /tmp/majorpanel_error.log\nMajor Panel could not start.",
                          MessageBox.TYPE_ERROR, timeout=10)
-        elif opened is not order[0]:
-            session.open(MessageBox, u"تعذّر فتح عرض Grid فعُدنا إلى List.\nGrid view failed - using List.\n(/tmp/majorpanel_error.log)",
-                         MessageBox.TYPE_INFO, timeout=8)
-    except Exception as e:
-        dlog_error("message box failed: %s" % e)
+        except Exception as e:
+            dlog_error("message box failed: %s" % e)
+
+
+def splashDone(session, result=None):
+    if result == "cancel":
+        cleanup_assets()
+    else:
+        open_panel(session)
+
+
+def launch(session, splash=False):
+    load_settings()
+    show = bool(splash and _state["splash"])
+    prep_assets(_state["theme"], _state["anim"], show)
+    if show:
+        try:
+            session.openWithCallback(lambda result=None: splashDone(session, result), SplashScreen)
+            return
+        except Exception:
+            dlog_error("splash failed:\n%s" % traceback.format_exc())
+    open_panel(session)
 
 
 def main(session, **kwargs):
-    launch(session)
+    launch(session, splash=True)
 
 
 def menuHook(menuid, **kwargs):
