@@ -694,6 +694,28 @@ def grid_debug(flag):
         return False
 
 
+def noNativeKeys(screen):
+    """Our screens move their lists from their own ActionMap, so the lists must not also grab the remote's
+    arrow keys natively (an experiment against arrow keys staying dead in other screens after the panel)."""
+    total = off = 0
+    has = False
+    try:
+        for v in screen.values():
+            inst = getattr(v, "instance", None)
+            if inst is not None and hasattr(inst, "setSelectionEnable"):          # a list widget
+                total += 1
+                if hasattr(inst, "allowNativeKeys"):
+                    has = True
+                    try:
+                        inst.allowNativeKeys(False)
+                        off += 1
+                    except Exception as e:
+                        dlog_error("allowNativeKeys: %s" % e)
+    except Exception as e:
+        dlog_error("noNativeKeys: %s" % e)
+    dlog("native keys off for %d of %d lists (allowNativeKeys available: %s)" % (off, total, has))
+
+
 def barw(name, r, bg, z=3):
     """A one-row list used as a neon bar (the segments are pictures drawn by the list)."""
     return ('<widget name="%s" %s backgroundColor="%s" backgroundColorSelected="%s" scrollbarMode="showNever" '
@@ -885,6 +907,7 @@ class PanelBase(Screen):
 
     # ----------------------------- بدء التشغيل -------------------------------
     def start(self):
+        noNativeKeys(self)
         self.loadSegments()
         self.loadTitle()
         self.showBoxInfo()
