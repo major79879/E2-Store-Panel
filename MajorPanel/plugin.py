@@ -1664,18 +1664,17 @@ def settings_skin():
     c = tc()
     parts = [
         '<screen name="MajorPanelSettings" position="0,0" size="%d,%d" flags="wfNoBorder" backgroundColor="%s">' % (_W, _H, c["bg"]),
-        '<widget name="pv_hdr" %s backgroundColor="%s" transparent="0" zPosition="0"/>' % (rect(0, 0, 1920, 110), c["card"]),
-        '<widget name="pv_line" position="0,%d" size="%d,%d" backgroundColor="%s" transparent="0" zPosition="1"/>' % (s(106), _W, max(2, s(4)), c["hdr"]),
+        box((0, 0, 1920, 110), c["card"]),
+        '<eLabel position="0,%d" size="%d,%d" backgroundColor="%s" zPosition="1"/>' % (s(106), _W, max(2, s(4)), c["hdr"]),
         wid("s_title", (60, 20, 1000, 70), font=46, fg="#FFFFFF", valign="center"),
-        '<widget name="pv_card" %s backgroundColor="%s" cornerRadius="%d" transparent="0" zPosition="0"/>' % (rect(360, 150, 1200, 790), c["card"], s(24)),
+        box((360, 150, 1200, 790), c["card"], 24),
         '<widget name="rows" %s backgroundColor="%s" backgroundColorSelected="%s" foregroundColor="%s" '
         'foregroundColorSelected="#FFFFFF" scrollbarMode="showNever" transparent="0" zPosition="2"/>' % (
             rect(390, 175, 1140, 510), c["card"], c["sel"], c["text"]),
         wid("s_prev", (390, 690, 1140, 40), font=26, fg=c["acc"], valign="center"),
     ]
-    for i in range(5):
-        parts.append('<widget name="sw%d" %s backgroundColor="%s" cornerRadius="%d" transparent="0" zPosition="2"/>' % (
-            i, rect(400 + i * 220, 740, 190, 80), c["line"], s(14)))
+    parts.append('<widget name="swatches" %s backgroundColor="%s" backgroundColorSelected="%s" scrollbarMode="showNever" '
+                 'transparent="1" zPosition="2"/>' % (rect(390, 735, 1140, 90), c["card"], c["card"]))
     parts += [
         wid("s_note", (390, 836, 1140, 90), font=22, fg=c["muted"], valign="top"),
         '<widget name="key_red" %s font="Regular;%d" foregroundColor="#FFFFFF" backgroundColor="%s" cornerRadius="%d" '
@@ -1707,10 +1706,9 @@ class SettingsScreen(Screen):
         self["rows"].l.setFont(0, gFont("Regular", s(34)))
         self["rows"].l.setItemHeight(s(72))
         self["s_prev"] = Label("")
-        for n in ("pv_hdr", "pv_line", "pv_card"):
-            self[n] = Label("")
-        for i in range(5):
-            self["sw%d" % i] = Label("")
+        self["swatches"] = MenuList([], content=eListboxPythonMultiContent)
+        self["swatches"].l.setFont(0, gFont("Regular", s(20)))
+        self["swatches"].l.setItemHeight(s(90))
         self["s_note"] = Label(u"Animation (الاسم واللوجو المتحركان) أجمل لكنه يستهلك معالجاً وذاكرة أكثر - الأفضل إيقافه للأداء الأخف.\n"
                                u"Main Menu: إظهار البانل في القائمة الرئيسية للصورة (Menu).\nChanges apply after saving; the panel reopens by itself.")
         self["key_red"] = Label(u"إلغاء | Cancel")
@@ -1728,8 +1726,7 @@ class SettingsScreen(Screen):
 
     def refreshAll(self):
         idx = self["rows"].getSelectionIndex() if self["rows"].list else 0
-        th = THEMES[self.themeKey()]                        # الثيم المختار الآن (معاينة حية) وليس الثيم الفعلي
-        txt, mut, acc = hexint(th["text"]), hexint(th["muted"]), hexint(th["accent"])
+        txt, mut, acc = hexint(self.t["text"]), hexint(self.t["muted"]), hexint(self.t["accent"])
         modern = self.style == "modern"
         values = (
             ("View", "List" if self.view == "list" else "Grid", True),
@@ -1752,42 +1749,23 @@ class SettingsScreen(Screen):
                                                color=acc if active else mut, color_sel=0xFFFFFF)])
         self["rows"].setList(rows)
         self["rows"].moveToIndex(idx)
-        self.applyPreview(th)
+        th = THEMES[self.themeKey()]
         self["s_prev"].setText(u"Preview:  %s%s" % ("" if th["modern"] else "Classic  ·  ", th["name"]))
-        for i, key in enumerate(("bg", "card2", "accent", "second", "sel")):
-            inst = self["sw%d" % i].instance
-            if inst:
-                inst.setBackgroundColor(parseColor(th[key]))
+        self.drawSwatches(th)
 
-    def applyPreview(self, th):
-        """Re-colors the whole settings screen with the theme being chosen (no need to save first)."""
-        def paint(name, key):
+    def drawSwatches(self, th):
+        """Five color blocks of the theme being chosen, drawn by a list (colored text cells) so they always repaint."""
+        cells = [None]
+        for i, key in enumerate(("bg", "card2", "accent", "second", "sel")):
+            col = hexint(th[key])
+            kw = dict(pos=(s(10 + i * 220), s(5)), size=(s(190), s(80)), font=0,
+                      flags=RT_HALIGN_CENTER | RT_VALIGN_CENTER, text="", color=col, color_sel=col,
+                      backcolor=col, backcolor_sel=col)
             try:
-                inst = self[name].instance
-                if inst:
-                    inst.setBackgroundColor(parseColor(th[key]))
-            except Exception:
-                pass
-        try:
-            if self.instance:
-                self.instance.setBackgroundColor(parseColor(th["bg"]))
-        except Exception:
-            pass
-        paint("pv_hdr", "card")
-        paint("pv_line", "hdr")
-        paint("pv_card", "card")
-        paint("key_red", "red")
-        paint("key_green", "green")
-        try:
-            rows = self["rows"].instance
-            if rows:
-                rows.setBackgroundColor(parseColor(th["card"]))
-                rows.setBackgroundColorSelected(parseColor(th["sel"]))
-        except Exception:
-            pass
-        setColor(self["s_prev"], th["accent"])
-        setColor(self["s_note"], th["muted"])
-        setColor(self["hint"], th["muted"])
+                cells.append(MultiContentEntryText(border_width=max(1, s(2)), border_color=hexint(th["line"]), **kw))
+            except TypeError:
+                cells.append(MultiContentEntryText(**kw))
+        self["swatches"].setList([cells])
 
     def current(self):
         return SETTINGS_ROWS[self["rows"].getSelectionIndex()]
