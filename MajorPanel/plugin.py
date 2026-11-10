@@ -79,7 +79,8 @@ SETTINGS_FILE = "/etc/enigma2/majorpanel_settings.json"      # عرض البان
 RUN_LOG = "/tmp/majorpanel_run.log"                          # سجل تشخيصي لشاشة التنفيذ
 ASSET_DIR = "/tmp/majorpanel"                                # صور مؤقتة صغيرة تُحذف عند إغلاق البانل
 ERROR_LOG = "/tmp/majorpanel_error.log"
-DEFAULT_SETTINGS = {"view": "list", "theme": "blue_fire", "anim": False, "mainmenu": True, "splash": True}
+DEFAULT_SETTINGS = {"view": "list", "theme": "blue_fire", "anim": False, "mainmenu": True, "splash": True,
+                    "autoupdate": True}
 # ============================================================================
 
 # ---- مصدر واحد لتعريف الثيمات (يُستخدم في plugin.py وفي توليد الصور) ----
@@ -207,13 +208,15 @@ def load_settings():
     _state["anim"] = bool(data.get("anim", DEFAULT_SETTINGS["anim"]))
     _state["mainmenu"] = bool(data.get("mainmenu", DEFAULT_SETTINGS["mainmenu"]))
     _state["splash"] = bool(data.get("splash", DEFAULT_SETTINGS["splash"]))
+    _state["autoupdate"] = bool(data.get("autoupdate", DEFAULT_SETTINGS["autoupdate"]))
     return _state
 
 
-def save_settings(theme, anim=False, mainmenu=True, splash=True, view="list"):
+def save_settings(theme, anim=False, mainmenu=True, splash=True, view="list", autoupdate=True):
     try:
         with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
-            json.dump({"view": view, "theme": theme, "anim": bool(anim), "mainmenu": bool(mainmenu), "splash": bool(splash)}, f)
+            json.dump({"view": view, "theme": theme, "anim": bool(anim), "mainmenu": bool(mainmenu), "splash": bool(splash),
+                       "autoupdate": bool(autoupdate)}, f)
         return True
     except Exception:
         return False
@@ -595,8 +598,7 @@ def prep_assets(theme_key, anim, splash=False, view="list"):
         for size in ((64, 96) if view == "grid" else (48,)):
             for key, data in getattr(a, "ICONS%d" % size).items():
                 _put("ic%d_%s" % (size, key), data)
-        _put("pill_off", a.PILLS[theme_key]["off"])
-        _put("pill_on", a.PILLS[theme_key]["on"])
+        _put("pill", a.PILLS[theme_key]["off"])
         if view == "grid":
             _put("emblem", a.EMBLEM[theme_key])
         ok = True
@@ -1441,10 +1443,10 @@ class ListPanel(PanelBase):
     def fillItems(self):
         t = self.t
         txt, sec = hexint(t["text"]), hexint(t["second"])
-        acc, dark = hexint(t["accent"]), hexint(t["bg"])
+        acc = hexint(t["accent"])
         items = self.cats[self.catIdx][1] if self.cats else []
         check = installed_checker()
-        pill_off, pill_on = pix("pill_off"), pix("pill_on")
+        pill = pix("pill")
         rows = []
         for it in items:
             done = check(it)
@@ -1456,14 +1458,13 @@ class ListPanel(PanelBase):
                                          flags=RT_HALIGN_LEFT | RT_VALIGN_CENTER,
                                          text=it["author"] or it["cat"],
                                          color=sec, color_sel=0xDDEEFF)]
-            pill = pill_on if done else pill_off
             if pill:
                 row.append(MultiContentEntryPixmapAlphaBlend(pos=(s(574), s(28)), size=(s(180), s(44)),
                                                              png=pill, flags=BT_SCALE))
             row.append(MultiContentEntryText(pos=(s(574), s(28)), size=(s(180), s(44)), font=2,
                                              flags=RT_HALIGN_CENTER | RT_VALIGN_CENTER,
                                              text="INSTALLED" if done else "INSTALL",
-                                             color=dark if done else acc, color_sel=dark if done else 0xFFFFFF))
+                                             color=acc, color_sel=0xFFFFFF))
             rows.append(row)
         self["items"].setList(rows)
         if rows:
@@ -1764,7 +1765,7 @@ class GridPanel(PanelBase):
         try:
             done = bool(it) and installed_checker()(it)
             inst = self["g_pill"].instance
-            pm = pix("pill_on" if done else "pill_off")
+            pm = pix("pill")
             if it and pm and inst:
                 inst.setPixmap(pm)
                 inst.show()
@@ -1772,7 +1773,7 @@ class GridPanel(PanelBase):
                 inst.hide()
             if it:
                 self["g_pilltxt"].setText("INSTALLED" if done else "INSTALL")
-                setColor(self["g_pilltxt"], self.t["bg"] if done else self.t["accent"])
+                setColor(self["g_pilltxt"], self.t["accent"])
             else:
                 self["g_pilltxt"].setText("")
         except Exception as e:
@@ -1832,7 +1833,7 @@ class GridPanel(PanelBase):
 
 
 # --------------------------------- شاشة الإعدادات -----------------------------
-SETTINGS_ROWS = ("view", "style", "color", "anim", "splash", "mainmenu", "update")
+SETTINGS_ROWS = ("view", "style", "color", "anim", "splash", "autoupdate", "mainmenu", "update")
 
 
 def settings_skin():
@@ -1851,7 +1852,7 @@ def settings_skin():
     parts.append('<widget name="swatches" %s backgroundColor="%s" backgroundColorSelected="%s" scrollbarMode="showNever" '
                  'transparent="1" zPosition="2"/>' % (rect(390, 735, 1140, 90), c["card"], c["card"]))
     parts += [
-        wid("s_note", (390, 836, 1140, 90), font=22, fg=c["muted"], valign="top"),
+        wid("s_note", (390, 830, 1140, 108), font=22, fg=c["muted"], valign="top"),
         '<widget name="key_red" %s font="Regular;%d" foregroundColor="#FFFFFF" backgroundColor="%s" cornerRadius="%d" '
         'halign="center" valign="center" zPosition="2"/>' % (rect(500, 955, 440, 66), s(30), c["red"], s(16)),
         '<widget name="key_green" %s font="Regular;%d" foregroundColor="#FFFFFF" backgroundColor="%s" cornerRadius="%d" '
@@ -1873,19 +1874,20 @@ class SettingsScreen(Screen):
         self.anim = st["anim"]
         self.mainmenu = st["mainmenu"]
         self.splash = st["splash"]
+        self.autoupdate = st["autoupdate"]
         self.style = "classic" if st["theme"] == "classic" else "modern"
         self.color = st["theme"] if st["theme"] != "classic" else MODERN_ORDER[0]
 
         self["s_title"] = Label(u"الإعدادات | Settings")
         self["rows"] = MenuList([], enableWrapAround=True, content=eListboxPythonMultiContent)
         self["rows"].l.setFont(0, gFont("Regular", s(34)))
-        self["rows"].l.setItemHeight(s(72))
+        self["rows"].l.setItemHeight(s(64))
         self["s_prev"] = Label("")
         self["swatches"] = MenuList([], content=eListboxPythonMultiContent)
         self["swatches"].l.setFont(0, gFont("Regular", s(20)))
         self["swatches"].l.setItemHeight(s(90))
         self["s_note"] = Label(u"Animation (الاسم واللوجو المتحركان) أجمل لكنه يستهلك معالجاً وذاكرة أكثر - الأفضل إيقافه للأداء الأخف.\n"
-                               u"Main Menu: إظهار البانل في القائمة الرئيسية للصورة (Menu).\nChanges apply after saving; the panel reopens by itself.")
+                               u"Main Menu: إظهار البانل في القائمة الرئيسية للصورة (Menu).\nAuto Check Update: فحص تحديث البانل عند فتحها، يعمل مع شاشة Splash.\nChanges apply after saving; the panel reopens by itself.")
         self["key_red"] = Label(u"إلغاء | Cancel")
         self["key_green"] = Label(u"حفظ وتطبيق | Save & Apply")
         self["hint"] = Label("LEFT / RIGHT : change     UP / DOWN : select     OK : on 'Update panel' runs the update")
@@ -1909,6 +1911,7 @@ class SettingsScreen(Screen):
             ("Color", THEMES[self.color]["name"] if modern else u"— (Modern only)", modern),
             ("Animation", "On" if self.anim else "Off", True),
             ("Splash", "On" if self.splash else "Off", True),
+            ("Auto Check Update", "On" if self.autoupdate else "Off", True),
             ("Main Menu", "Show" if self.mainmenu else "Hide", True),
             ("Update panel", u"Run  \u25b6", True),
         )
@@ -1916,10 +1919,10 @@ class SettingsScreen(Screen):
         for i, (name, value, active) in enumerate(values):
             arrows = ("<  %s  >" % value) if (active and i < len(values) - 1) else value
             rows.append([name,
-                         MultiContentEntryText(pos=(s(30), 0), size=(s(500), s(72)), font=0,
+                         MultiContentEntryText(pos=(s(30), 0), size=(s(500), s(64)), font=0,
                                                flags=RT_HALIGN_LEFT | RT_VALIGN_CENTER, text=name,
                                                color=txt if active else mut, color_sel=0xFFFFFF),
-                         MultiContentEntryText(pos=(s(520), 0), size=(s(590), s(72)), font=0,
+                         MultiContentEntryText(pos=(s(520), 0), size=(s(590), s(64)), font=0,
                                                flags=RT_HALIGN_RIGHT | RT_VALIGN_CENTER, text=arrows,
                                                color=acc if active else mut, color_sel=0xFFFFFF)])
         self["rows"].setList(rows)
@@ -1958,6 +1961,8 @@ class SettingsScreen(Screen):
             self.anim = not self.anim
         elif row == "splash":
             self.splash = not self.splash
+        elif row == "autoupdate":
+            self.autoupdate = not self.autoupdate
         elif row == "mainmenu":
             self.mainmenu = not self.mainmenu
         self.refreshAll()
@@ -1993,7 +1998,7 @@ class SettingsScreen(Screen):
     def save(self):
         theme = self.themeKey()
         changed = (self.view, theme, self.anim) != self.orig     # تغيير القائمة الرئيسية لا يحتاج إعادة فتح
-        save_settings(theme, self.anim, self.mainmenu, self.splash, self.view)
+        save_settings(theme, self.anim, self.mainmenu, self.splash, self.view, self.autoupdate)
         self.close(changed)
 
     def cancel(self):
@@ -2509,11 +2514,13 @@ class SplashScreen(Screen):
         self["sp_by"] = Label(u"By John Kamel")
         self["sp_ver"] = Label(u"V" + PLUGIN_VERSION)
         self["sp_bar"] = Label("")
-        self["sp_hint"] = Label(u"Checking for updates ...     (OK : skip   EXIT : cancel)")
+        self["sp_hint"] = Label(u"Checking for updates ...     (OK : skip   EXIT : cancel)" if _state.get("autoupdate", True)
+                                else u"OK : skip     EXIT : cancel")
         self["actions"] = ActionMap(["OkCancelActions"], {"ok": self.skip, "cancel": self.abort}, -1)
         self.elapsed = 0
         self.finished = False
-        self.check = {"done": False, "ver": None, "error": None}
+        self.do_check = bool(_state.get("autoupdate", True))
+        self.check = {"done": not self.do_check, "ver": None, "error": None}
         self.timer = eTimer()
         try:
             self.timer.callback.append(self.tick)
@@ -2536,12 +2543,13 @@ class SplashScreen(Screen):
                 self["sp_text"].setText(TITLE)
         except Exception as e:
             dlog_error("splash start: %s" % e)
-        try:
-            import threading
-            threading.Thread(target=fetch_remote_version, args=(self.check,), daemon=True).start()
-        except Exception as e:
-            dlog_error("update check: %s" % e)
-            self.check["done"] = True
+        if self.do_check:
+            try:
+                import threading
+                threading.Thread(target=fetch_remote_version, args=(self.check,), daemon=True).start()
+            except Exception as e:
+                dlog_error("update check: %s" % e)
+                self.check["done"] = True
         self.timer.start(SPLASH_TICK, False)
 
     def decide(self):
@@ -2613,7 +2621,7 @@ def open_panel(session):
         dlog_error("%s failed:\n%s" % (cls.__name__, traceback.format_exc()))
         if cls is GridPanel:                # لا نترك المستخدم بدون بانل: نرجع لوضع List
             _state["view"] = "list"
-            save_settings(_state["theme"], _state["anim"], _state["mainmenu"], _state["splash"], "list")
+            save_settings(_state["theme"], _state["anim"], _state["mainmenu"], _state["splash"], "list", _state["autoupdate"])
             prep_assets(_state["theme"], _state["anim"], False, "list")
             open_panel(session)
             return
