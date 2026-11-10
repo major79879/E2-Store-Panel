@@ -72,6 +72,8 @@ TITLE = "Major Enigma Panel"
 CREDIT = "By John Kamel"
 # تحديث البانل نفسه (إعادة التثبيت) - ملف installer.sh موجود في جذر المستودع (خارج مجلد MajorPanel)
 INSTALLER_URL = GITHUB_RAW + "/installer.sh"
+PLUGIN_VERSION = "11"                                        # رقم إصدار هذه النسخة (يظهر V11) - غيّره مع كل إصدار
+VERSION_URL = GITHUB_RAW + "/Version.txt"                    # ملف الإصدار على GitHub: يحوي رقماً فقط مثل 12
 UPDATE_CMD = 'wget -q --no-check-certificate -O - "%s" | /bin/sh -s norestart' % INSTALLER_URL
 SETTINGS_FILE = "/etc/enigma2/majorpanel_settings.json"      # عرض البانل + الثيم المختار
 RUN_LOG = "/tmp/majorpanel_run.log"                          # سجل تشخيصي لشاشة التنفيذ
@@ -593,6 +595,8 @@ def prep_assets(theme_key, anim, splash=False, view="list"):
         for size in ((64, 96) if view == "grid" else (48,)):
             for key, data in getattr(a, "ICONS%d" % size).items():
                 _put("ic%d_%s" % (size, key), data)
+        _put("pill_off", a.PILLS[theme_key]["off"])
+        _put("pill_on", a.PILLS[theme_key]["on"])
         if view == "grid":
             _put("emblem", a.EMBLEM[theme_key])
         ok = True
@@ -771,6 +775,7 @@ def header_xml():
         pixw("logo_glow", (34, 5, 100, 100)),
         pixw("logo_img", (34, 5, 100, 100), z=3),
         wid("credit", (686, 20, 400, 70), font=24, fg=c["muted"], valign="center", extra='noWrap="1"'),
+        wid("h_ver", (925, 20, 160, 70), font=36, fg=c["acc"], halign="center", valign="center"),
         wid("h_server", (1090, 20, 340, 70), font=28, fg=c["warn"], halign="right", valign="center"),
         wid("clock", (1560, 4, 300, 62), font=52, fg="#FFFFFF", halign="right", valign="center"),
         wid("date", (1440, 66, 420, 36), font=24, fg=c["muted"], halign="right", valign="center"),
@@ -824,11 +829,12 @@ class PanelBase(Screen):
         self.glowIdx = 0
         self.tick = 0
 
-        for name in ("title", "credit", "h_server", "clock", "date", "b_model", "b_image", "b_py", "b_ip",
+        for name in ("title", "credit", "h_ver", "h_server", "clock", "date", "b_model", "b_image", "b_py", "b_ip",
                      "b_ram", "b_hdd"):
             self[name] = Label("")
         self["title"].setText(TITLE)
         self["credit"].setText(CREDIT)
+        self["h_ver"].setText(u"V" + PLUGIN_VERSION)
         for name in ("title_glow", "title_img", "logo_glow", "logo_img", "box_pic"):
             self[name] = Pixmap()
         for prefix in ("ram", "hdd"):
@@ -905,6 +911,7 @@ class PanelBase(Screen):
     def start(self):
         if self.NO_NATIVE:
             noNativeKeys(self)
+        reset_installed_cache()
         self.loadSegments()
         self.loadTitle()
         self.showBoxInfo()
@@ -1211,6 +1218,14 @@ class PanelBase(Screen):
                 self.show()
             except Exception:
                 pass
+            reset_installed_cache()
+            try:
+                self.refreshInstalled()
+            except Exception as e:
+                dlog_error("refreshInstalled: %s" % e)
+
+    def refreshInstalled(self):
+        pass
 
     # ------------------------- الإعدادات وتحديث البانل -----------------------
     def openSettings(self):
@@ -1236,6 +1251,117 @@ class PanelBase(Screen):
             return
         self.closing = True
         self.close()
+
+
+INSTALLED_FILE = "/etc/enigma2/majorpanel_installed.json"     # ما نُفّذ بنجاح من البانل
+_installed = {"keys": None, "sys": None}
+ACTION_WORDS = ("update", "remove", "uninstall", "delete", "clean", "fix", "restore", "backup", "reset", "restart", "install")
+
+
+def _norm(text):
+    return re.sub(r"[^a-z0-9]", "", (text or "").lower())
+
+
+def item_key(it):
+    return "%s|%s" % (_norm(it.get("cat")), _norm(it.get("name")))
+
+
+def load_installed():
+    if _installed["keys"] is None:
+        try:
+            with open(INSTALLED_FILE, "r", encoding="utf-8") as f:
+                _installed["keys"] = set(json.load(f).get("keys", []))
+        except Exception:
+            _installed["keys"] = set()
+    return _installed["keys"]
+
+
+def mark_installed(it):
+    """Remembers an item whose command finished with exit code 0 (the update item of the panel itself is ignored)."""
+    if not it or not it.get("cat"):
+        return
+    keys = load_installed()
+    keys.add(item_key(it))
+    try:
+        with open(INSTALLED_FILE, "w", encoding="utf-8") as f:
+            json.dump({"keys": sorted(keys)}, f)
+    except Exception as e:
+        dlog_error("mark_installed: %s" % e)
+
+
+def system_names():
+    """Normalized names of plugin folders and installed opkg packages (cached until the panel is reopened / a run ends)."""
+    if _installed["sys"] is None:
+        names = set()
+        base = "/usr/lib/enigma2/python/Plugins"
+        for sub in ("Extensions", "SystemPlugins"):
+            try:
+                for d in os.listdir(os.path.join(base, sub)):
+                    n = _norm(d)
+                    if len(n) >= 3:
+                        names.add(n)
+            except Exception:
+                pass
+        try:
+            with open("/var/lib/opkg/status", "r", encoding="utf-8", errors="ignore") as f:
+                for block in f.read().split("\n\n"):
+                    if "install ok installed" not in block:
+                        continue
+                    for line in block.split("\n"):
+                        if line.startswith("Package:"):
+                            raw = re.sub(r"^enigma2-plugin-(extensions|systemplugins|softcams|skins|picons|settings|drivers|channel-settings)?-?",
+                                         "", line.split(":", 1)[1].strip().lower())
+                            n = _norm(raw)
+                            if len(n) >= 3:
+                                names.add(n)
+                            break
+        except Exception:
+            pass
+        _installed["sys"] = names
+    return _installed["sys"]
+
+
+def reset_installed_cache():
+    _installed["keys"] = None
+    _installed["sys"] = None
+
+
+def installed_checker():
+    """Returns check(item) -> True if the item was installed by this panel or a plugin with a matching name is on the box."""
+    keys = load_installed()
+    names = system_names()
+
+    def check(it):
+        if item_key(it) in keys:
+            return True
+        n = _norm(it.get("name"))
+        if len(n) < 3:
+            return False
+        if n in names:
+            return True
+        if n.startswith(ACTION_WORDS):          # "Update X" / "Remove X" are actions, not the plugin itself
+            return False
+        for x in names:
+            short, long_ = (n, x) if len(n) <= len(x) else (x, n)
+            if len(short) >= 6 and short in long_ and len(short) >= 0.75 * len(long_):
+                return True
+        return False
+    return check
+
+
+def fetch_remote_version(holder):
+    """Worker thread: reads Version.txt from GitHub. holder gets ver (str) or error, then done=True."""
+    try:
+        text = _fetch(VERSION_URL, timeout=4)
+        lines = text.strip().splitlines()
+        v = re.sub(r"^[vV]\s*", "", lines[0].strip()) if lines else ""
+        if re.match(r"^[0-9A-Za-z._-]{1,20}$", v):
+            holder["ver"] = v
+        else:
+            holder["error"] = "bad version file"
+    except Exception as e:
+        holder["error"] = str(e)
+    holder["done"] = True
 
 
 def update_item():
@@ -1281,6 +1407,7 @@ class ListPanel(PanelBase):
             lst = self[name].l
             lst.setFont(0, gFont("Regular", s(big)))
             lst.setFont(1, gFont("Regular", s(small)))
+            lst.setFont(2, gFont("Regular", s(20)))
             lst.setItemHeight(s(h))
         self["d_cat"] = Label("")
         self["d_count"] = Label("")
@@ -1314,21 +1441,42 @@ class ListPanel(PanelBase):
     def fillItems(self):
         t = self.t
         txt, sec = hexint(t["text"]), hexint(t["second"])
+        acc, dark = hexint(t["accent"]), hexint(t["bg"])
         items = self.cats[self.catIdx][1] if self.cats else []
+        check = installed_checker()
+        pill_off, pill_on = pix("pill_off"), pix("pill_on")
         rows = []
         for it in items:
-            rows.append([it,
-                         MultiContentEntryText(pos=(s(24), s(8)), size=(s(720), s(46)), font=0,
-                                               flags=RT_HALIGN_LEFT | RT_VALIGN_CENTER, text=it["name"],
-                                               color=txt, color_sel=0xFFFFFF),
-                         MultiContentEntryText(pos=(s(24), s(56)), size=(s(720), s(36)), font=1,
-                                               flags=RT_HALIGN_LEFT | RT_VALIGN_CENTER,
-                                               text=it["author"] or it["cat"],
-                                               color=sec, color_sel=0xDDEEFF)])
+            done = check(it)
+            row = [it,
+                   MultiContentEntryText(pos=(s(24), s(8)), size=(s(540), s(46)), font=0,
+                                         flags=RT_HALIGN_LEFT | RT_VALIGN_CENTER, text=it["name"],
+                                         color=txt, color_sel=0xFFFFFF),
+                   MultiContentEntryText(pos=(s(24), s(56)), size=(s(540), s(36)), font=1,
+                                         flags=RT_HALIGN_LEFT | RT_VALIGN_CENTER,
+                                         text=it["author"] or it["cat"],
+                                         color=sec, color_sel=0xDDEEFF)]
+            pill = pill_on if done else pill_off
+            if pill:
+                row.append(MultiContentEntryPixmapAlphaBlend(pos=(s(574), s(28)), size=(s(180), s(44)),
+                                                             png=pill, flags=BT_SCALE))
+            row.append(MultiContentEntryText(pos=(s(574), s(28)), size=(s(180), s(44)), font=2,
+                                             flags=RT_HALIGN_CENTER | RT_VALIGN_CENTER,
+                                             text="INSTALLED" if done else "INSTALL",
+                                             color=dark if done else acc, color_sel=dark if done else 0xFFFFFF))
+            rows.append(row)
         self["items"].setList(rows)
         if rows:
             self["items"].moveToIndex(0)
         self.updateDetails()
+
+    def refreshInstalled(self):
+        """After a run: redraw the rows (badges) and keep the selected row."""
+        idx = self["items"].getSelectionIndex() if self["items"].list else 0
+        self.fillItems()
+        if self["items"].list:
+            self["items"].moveToIndex(min(idx, len(self["items"].list) - 1))
+            self.updateDetails()
 
     def currentItem(self):
         cur = self["items"].getCurrent()
@@ -1420,6 +1568,8 @@ class GridPanel(PanelBase):
             # --- الشعار الكبير للقسم (حلقة جاهزة كصورة + أيقونة) ---
             pixw("emb_bg", (1022, 142, 256, 256), z=1),
             pixw("emb_ic", (1102, 222, 96, 96), z=3),
+            pixw("g_pill", (1035, 438, 230, 52), z=3),
+            wid("g_pilltxt", (1035, 438, 230, 52), font=28, fg=c["text"], halign="center", valign="center", z=4),
             # --- معلومات الجهاز ---
             box((1310, 125, 570, 395), c["card"], 24),
             device_xml(self.DEV),
@@ -1456,6 +1606,8 @@ class GridPanel(PanelBase):
             self["st%d_v" % i] = Label("")
             self["st%d_l" % i] = Label(STAT_LABELS[i])
         self["emb_bg"] = Pixmap()
+        self["g_pill"] = Pixmap()
+        self["g_pilltxt"] = Label("")
         self["emb_ic"] = Pixmap()
         for i in range(GRID_PER):
             self["tb%d" % i] = Pixmap()
@@ -1591,6 +1743,7 @@ class GridPanel(PanelBase):
             self["g_name"].setText("")
             self["g_author"].setText("")
             self["g_desc"].setText(u"لا توجد نتائج | No results" if self.query else "")
+        self.showBadge(it)
         pages = max(1, (n + GRID_PER - 1) // GRID_PER)
         self["g_page"].setText("PAGE %d/%d     %d plugins" % (self.sel // GRID_PER + 1, pages, n) if n else "")
         try:
@@ -1605,6 +1758,28 @@ class GridPanel(PanelBase):
         self["st1_v"].setText(str(n))
         self["st2_v"].setText(str(total))
         self["st3_v"].setText(fmt_uptime(get_uptime()))
+
+    def showBadge(self, it):
+        """INSTALL / INSTALLED pill of the selected item (under the big emblem)."""
+        try:
+            done = bool(it) and installed_checker()(it)
+            inst = self["g_pill"].instance
+            pm = pix("pill_on" if done else "pill_off")
+            if it and pm and inst:
+                inst.setPixmap(pm)
+                inst.show()
+            elif inst:
+                inst.hide()
+            if it:
+                self["g_pilltxt"].setText("INSTALLED" if done else "INSTALL")
+                setColor(self["g_pilltxt"], self.t["bg"] if done else self.t["accent"])
+            else:
+                self["g_pilltxt"].setText("")
+        except Exception as e:
+            dlog_error("showBadge: %s" % e)
+
+    def refreshInstalled(self):
+        self.updateHero()
 
     def extraStats(self):
         try:
@@ -2175,6 +2350,8 @@ class RunScreen(Screen):
             return
         self.done = True
         self.success = (retval == 0)
+        if self.success:
+            mark_installed(self.item)
         dlog("finished rc=%s mode=%s output=%s" % (retval, self.mode, self.gotOutput))
         self.feed(u"\n\x1b[%sm--- finished (exit code %s) ---\x1b[0m\n" % ("1;32" if self.success else "1;31", retval))
         self.follow = True
@@ -2299,6 +2476,7 @@ def run_item(session, item, verb=VERB_INSTALL, callback=None):
 # OK = تخطي والدخول للبانل ، EXIT = إلغاء فتح البانل. يمكن إيقافها من الإعدادات (Splash).
 SPLASH_MS = 1700
 SPLASH_TICK = 40
+SPLASH_MAX_MS = 6000                    # أقصى انتظار لنتيجة فحص التحديث
 
 
 def splash_skin():
@@ -2310,6 +2488,7 @@ def splash_skin():
         pixw("sp_name", (700, 560, 520, 84), z=3),
         wid("sp_text", (460, 560, 1000, 84), font=56, fg="#FFFFFF", bg=c["bg"], halign="center", valign="center", z=3),
         wid("sp_by", (460, 655, 1000, 50), font=30, fg=c["muted"], bg=c["bg"], halign="center", valign="center"),
+        wid("sp_ver", (460, 702, 1000, 48), font=34, fg=c["acc"], bg=c["bg"], halign="center", valign="center"),
         box((960 - bar_w // 2, 780, bar_w, 8), c["line"], 4, z=2),
         '<widget name="sp_bar" %s backgroundColor="%s" cornerRadius="%d" zPosition="3"/>' % (
             rect(960 - bar_w // 2, 780, 10, 8), c["acc"], s(4)),
@@ -2328,11 +2507,13 @@ class SplashScreen(Screen):
         self["sp_name"] = Pixmap()
         self["sp_text"] = Label("")
         self["sp_by"] = Label(u"By John Kamel")
+        self["sp_ver"] = Label(u"V" + PLUGIN_VERSION)
         self["sp_bar"] = Label("")
-        self["sp_hint"] = Label(u"OK : skip     EXIT : cancel")
+        self["sp_hint"] = Label(u"Checking for updates ...     (OK : skip   EXIT : cancel)")
         self["actions"] = ActionMap(["OkCancelActions"], {"ok": self.skip, "cancel": self.abort}, -1)
         self.elapsed = 0
         self.finished = False
+        self.check = {"done": False, "ver": None, "error": None}
         self.timer = eTimer()
         try:
             self.timer.callback.append(self.tick)
@@ -2355,7 +2536,19 @@ class SplashScreen(Screen):
                 self["sp_text"].setText(TITLE)
         except Exception as e:
             dlog_error("splash start: %s" % e)
+        try:
+            import threading
+            threading.Thread(target=fetch_remote_version, args=(self.check,), daemon=True).start()
+        except Exception as e:
+            dlog_error("update check: %s" % e)
+            self.check["done"] = True
         self.timer.start(SPLASH_TICK, False)
+
+    def decide(self):
+        ver = self.check.get("ver")
+        if ver and ver.lower() != PLUGIN_VERSION.lower():
+            return ("update", ver)
+        return "go"
 
     def tick(self):
         if self.finished:
@@ -2367,8 +2560,8 @@ class SplashScreen(Screen):
             self["sp_bar"].instance.resize(eSize(w, s(8)))
         except Exception:
             pass
-        if frac >= 1.0:
-            self.finish("go")
+        if frac >= 1.0 and (self.check["done"] or self.elapsed >= SPLASH_MAX_MS):
+            self.finish(self.decide())
 
     def finish(self, result):
         if self.finished:
@@ -2432,9 +2625,28 @@ def open_panel(session):
             dlog_error("message box failed: %s" % e)
 
 
+def askUpdate(session, new_version):
+    text = (u"يوجد إصدار جديد من Major Enigma Panel\n"
+            u"الإصدار الحالي: V%s     |     الإصدار الجديد: V%s\n\n"
+            u"هل تريد التحديث الآن؟\n"
+            u"A new version is available. Update now?") % (PLUGIN_VERSION, new_version)
+
+    def answer(yes):
+        if yes:
+            run_item(session, update_item(), VERB_UPDATE, lambda *a: open_panel(session))
+        else:
+            open_panel(session)                                 # الرفض: ندخل البانل مباشرة
+    try:
+        session.openWithCallback(answer, MessageBox, text, MessageBox.TYPE_YESNO, default=True)
+    except TypeError:
+        session.openWithCallback(answer, MessageBox, text, MessageBox.TYPE_YESNO)
+
+
 def splashDone(session, result=None):
     if result == "cancel":
         cleanup_assets()
+    elif isinstance(result, tuple) and result and result[0] == "update":
+        askUpdate(session, result[1])
     else:
         open_panel(session)
 
