@@ -1256,9 +1256,9 @@ class ListPanel(PanelBase):
             '<screen name="MajorPanelList" position="0,0" size="%d,%d" flags="wfNoBorder" backgroundColor="%s">' % (_W, _H, c["bg"]),
             header_xml(),
             box((40, 135, 420, 800), c["card"], 24),
-            lst % ("cats", rect(55, 150, 390, 770), c["card"], c["sel"], c["text"], sa_c),
+            lst % ("cats", rect(55, 150, 390, 770), c["card"], c["card"] if sa_c else c["sel"], c["text"], sa_c),
             box((485, 135, 800, 800), c["card"], 24),
-            lst % ("items", rect(500, 150, 770, 770), c["card"], c["sel"], c["text"], sa_i),
+            lst % ("items", rect(500, 150, 770, 770), c["card"], c["card"] if sa_i else c["sel"], c["text"], sa_i),
             box((1310, 135, 570, 430), c["card"], 24),
             wid("d_cat", (1340, 153, 360, 40), font=26, fg=c["acc"]),
             wid("d_count", (1700, 153, 150, 40), font=26, fg=c["muted"], halign="right"),
@@ -1664,10 +1664,10 @@ def settings_skin():
     c = tc()
     parts = [
         '<screen name="MajorPanelSettings" position="0,0" size="%d,%d" flags="wfNoBorder" backgroundColor="%s">' % (_W, _H, c["bg"]),
-        box((0, 0, 1920, 110), c["card"]),
-        '<eLabel position="0,%d" size="%d,%d" backgroundColor="%s" zPosition="1"/>' % (s(106), _W, max(2, s(4)), c["hdr"]),
+        '<widget name="pv_hdr" %s backgroundColor="%s" transparent="0" zPosition="0"/>' % (rect(0, 0, 1920, 110), c["card"]),
+        '<widget name="pv_line" position="0,%d" size="%d,%d" backgroundColor="%s" transparent="0" zPosition="1"/>' % (s(106), _W, max(2, s(4)), c["hdr"]),
         wid("s_title", (60, 20, 1000, 70), font=46, fg="#FFFFFF", valign="center"),
-        box((360, 150, 1200, 790), c["card"], 24),
+        '<widget name="pv_card" %s backgroundColor="%s" cornerRadius="%d" transparent="0" zPosition="0"/>' % (rect(360, 150, 1200, 790), c["card"], s(24)),
         '<widget name="rows" %s backgroundColor="%s" backgroundColorSelected="%s" foregroundColor="%s" '
         'foregroundColorSelected="#FFFFFF" scrollbarMode="showNever" transparent="0" zPosition="2"/>' % (
             rect(390, 175, 1140, 510), c["card"], c["sel"], c["text"]),
@@ -1707,6 +1707,8 @@ class SettingsScreen(Screen):
         self["rows"].l.setFont(0, gFont("Regular", s(34)))
         self["rows"].l.setItemHeight(s(72))
         self["s_prev"] = Label("")
+        for n in ("pv_hdr", "pv_line", "pv_card"):
+            self[n] = Label("")
         for i in range(5):
             self["sw%d" % i] = Label("")
         self["s_note"] = Label(u"Animation (الاسم واللوجو المتحركان) أجمل لكنه يستهلك معالجاً وذاكرة أكثر - الأفضل إيقافه للأداء الأخف.\n"
@@ -1726,7 +1728,8 @@ class SettingsScreen(Screen):
 
     def refreshAll(self):
         idx = self["rows"].getSelectionIndex() if self["rows"].list else 0
-        txt, mut, acc = hexint(self.t["text"]), hexint(self.t["muted"]), hexint(self.t["accent"])
+        th = THEMES[self.themeKey()]                        # الثيم المختار الآن (معاينة حية) وليس الثيم الفعلي
+        txt, mut, acc = hexint(th["text"]), hexint(th["muted"]), hexint(th["accent"])
         modern = self.style == "modern"
         values = (
             ("View", "List" if self.view == "list" else "Grid", True),
@@ -1749,12 +1752,42 @@ class SettingsScreen(Screen):
                                                color=acc if active else mut, color_sel=0xFFFFFF)])
         self["rows"].setList(rows)
         self["rows"].moveToIndex(idx)
-        th = THEMES[self.themeKey()]
+        self.applyPreview(th)
         self["s_prev"].setText(u"Preview:  %s%s" % ("" if th["modern"] else "Classic  ·  ", th["name"]))
         for i, key in enumerate(("bg", "card2", "accent", "second", "sel")):
             inst = self["sw%d" % i].instance
             if inst:
                 inst.setBackgroundColor(parseColor(th[key]))
+
+    def applyPreview(self, th):
+        """Re-colors the whole settings screen with the theme being chosen (no need to save first)."""
+        def paint(name, key):
+            try:
+                inst = self[name].instance
+                if inst:
+                    inst.setBackgroundColor(parseColor(th[key]))
+            except Exception:
+                pass
+        try:
+            if self.instance:
+                self.instance.setBackgroundColor(parseColor(th["bg"]))
+        except Exception:
+            pass
+        paint("pv_hdr", "card")
+        paint("pv_line", "hdr")
+        paint("pv_card", "card")
+        paint("key_red", "red")
+        paint("key_green", "green")
+        try:
+            rows = self["rows"].instance
+            if rows:
+                rows.setBackgroundColor(parseColor(th["card"]))
+                rows.setBackgroundColorSelected(parseColor(th["sel"]))
+        except Exception:
+            pass
+        setColor(self["s_prev"], th["accent"])
+        setColor(self["s_note"], th["muted"])
+        setColor(self["hint"], th["muted"])
 
     def current(self):
         return SETTINGS_ROWS[self["rows"].getSelectionIndex()]
@@ -1895,8 +1928,11 @@ def run_skin():
         box((258, 83, 1366, 921), c["acc"], 34, z=0),
         box((261, 86, 1360, 915), fill, 32, z=1),
         wid("title", (316, 112, 1250, 84), font=40, fg="#FFFFFF", valign="center"),
-        '<widget name="log" %s backgroundColor="%s" backgroundColorSelected="%s" scrollbarMode="showOnDemand" '
+        '<widget name="log" %s backgroundColor="%s" backgroundColorSelected="%s" scrollbarMode="showNever" '
         'transparent="1" zPosition="3"/>' % (rect(LOG_X, LOG_Y, LOG_W, LOG_H), fill, fill),
+        box((LOG_X + LOG_W + 10, LOG_Y, 6, LOG_H), c["line"], 3, z=2),
+        '<widget name="sb" %s backgroundColor="%s" cornerRadius="%d" transparent="0" zPosition="3"/>' % (
+            rect(LOG_X + LOG_W + 10, LOG_Y, 6, 40), c["acc"], s(3)),
         box((338, 944, 18, 18), c["red"], 9, z=2),
         wid("key_red", (370, 924, 190, 58), font=30, fg="#FFFFFF", halign="left", valign="center"),
         box((568, 944, 18, 18), c["green"], 9, z=2),
@@ -1968,7 +2004,9 @@ class RunScreen(Screen):
         self.success = False
         self.closed = False
         self.hidden = False
-        self.follow = True      # keep the log scrolled to the bottom
+        self.follow = True      # keep the window on the last lines
+        self.offset = 0         # first visible row (when the user scrolled up)
+        self.allrows = []       # [(text, color)] - every wrapped row of the log
         self.dirty = False
         self.ticks = 0
         self.gotOutput = False
@@ -1981,6 +2019,7 @@ class RunScreen(Screen):
         self["log"] = MenuList([], content=eListboxPythonMultiContent)
         self["log"].l.setFont(0, gFont("Regular", s(26)))
         self["log"].l.setItemHeight(s(LOG_LINE))
+        self["sb"] = Label("")
         self["status"] = Label(u"جارٍ التنفيذ... | Running...")
         self["key_red"] = Label(u"Cancel")
         self["key_green"] = Label(u"Hide")
@@ -2039,8 +2078,8 @@ class RunScreen(Screen):
         self.dirty = False
         state = (None, False)
         cmd = self.item.get("cmd")
-        rows = []
-        for raw in self.lines + [self.partial]:
+        allrows = []
+        for raw in self.lines + ([self.partial] if self.partial else []):
             col, state = scan_line(raw, state)
             plain = SGR_RE.sub("", raw)
             if XTRACE_RE.match(plain):
@@ -2051,18 +2090,47 @@ class RunScreen(Screen):
             color = hexint(col)
             for seg in (textwrap.wrap(plain, WRAP_COLS, drop_whitespace=False,
                                       replace_whitespace=False) or [""]):
-                rows.append([None, MultiContentEntryText(
-                    pos=(0, 0), size=(s(LOG_W), s(LOG_LINE)), font=0,
-                    flags=RT_HALIGN_LEFT | RT_VALIGN_CENTER, text=seg, color=color, color_sel=color)])
-        if len(rows) > MAX_ROWS:
-            rows = rows[-MAX_ROWS:]
-        lst = self["log"]
-        old = lst.getSelectionIndex()
-        lst.setList(rows)
-        if rows:
-            lst.moveToIndex(len(rows) - 1 if self.follow else min(old, len(rows) - 1))
+                allrows.append((seg, color))
+        if len(allrows) > MAX_ROWS:
+            allrows = allrows[-MAX_ROWS:]
+        self.allrows = allrows
+        self.draw()
 
-    # ------------------------------ التشغيل ---------------------------------
+    def visRows(self):
+        return max(1, LOG_H // LOG_LINE)
+
+    def draw(self):
+        """Shows only the rows that fit the window: the last ones while following, otherwise from self.offset."""
+        total = len(self.allrows)
+        vis = self.visRows()
+        maxoff = max(0, total - vis)
+        self.offset = maxoff if self.follow else min(max(self.offset, 0), maxoff)
+        rows = []
+        for seg, color in self.allrows[self.offset:self.offset + vis]:
+            rows.append([None, MultiContentEntryText(
+                pos=(0, 0), size=(s(LOG_W), s(LOG_LINE)), font=0,
+                flags=RT_HALIGN_LEFT | RT_VALIGN_CENTER, text=seg, color=color, color_sel=color)])
+        self["log"].setList(rows)
+        try:
+            inst = self["sb"].instance
+            if inst:
+                if total > vis:
+                    th = max(s(30), int(s(LOG_H) * vis / float(total)))
+                    y = s(LOG_Y) + int((s(LOG_H) - th) * (self.offset / float(maxoff)))
+                    inst.resize(eSize(s(6), th))
+                    inst.move(ePoint(s(LOG_X + LOG_W + 10), y))
+                    inst.show()
+                else:
+                    inst.hide()
+        except Exception:
+            pass
+
+    def moveWin(self, delta):
+        maxoff = max(0, len(self.allrows) - self.visRows())
+        self.offset = min(max(self.offset + delta, 0), maxoff)
+        self.follow = self.offset >= maxoff
+        self.draw()
+
     def start(self):
         setColor(self["status"], self.t["warn"])
         self.feed(u"\x1b[1;36m> Starting...\x1b[0m\n\n")
@@ -2200,23 +2268,19 @@ class RunScreen(Screen):
 
     def scrollUp(self):
         if not self.wake():
-            self["log"].up()
-            self.follow = False
+            self.moveWin(-1)
 
     def scrollDown(self):
         if not self.wake():
-            self["log"].down()
-            self.follow = self["log"].getSelectionIndex() >= len(self["log"].list) - 1
+            self.moveWin(1)
 
     def pageUp(self):
         if not self.wake():
-            self["log"].pageUp()
-            self.follow = False
+            self.moveWin(-(self.visRows() - 1))
 
     def pageDown(self):
         if not self.wake():
-            self["log"].pageDown()
-            self.follow = self["log"].getSelectionIndex() >= len(self["log"].list) - 1
+            self.moveWin(self.visRows() - 1)
 
     def askRestart(self):
         text = u"إعادة تشغيل الواجهة الآن؟\nRestart GUI now?"
