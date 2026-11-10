@@ -207,3 +207,8 @@ wget -q "--no-check-certificate" https://raw.githubusercontent.com/islam-2412/Se
 
 ## === # E2 Currency Pro - Ramzus # = # أداة لمعرفة أسعار العملات والذهب # === #
 wget -qO- https://raw.githubusercontent.com/ramzus007/E2-Currency-Pro/main/installer.sh | sh
+
+## ============================== +++ Bouquets +++ ============================= ##
+
+## === # Abertis 30W - Ciefp # = # اضافة مفضلة قنوات ابيرتيس الاسبانية الارضية لملف قنواتك # === #
+wget -q --no-check-certificate "https://raw.githubusercontent.com/major79879/Major_Addons/refs/heads/main/installer_abertis_30w.sh" -O - | /bin/sh
