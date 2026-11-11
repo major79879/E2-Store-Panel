@@ -282,6 +282,9 @@ def hexint(h):
     return int(h.lstrip("#"), 16)
 
 
+GOLD = "#FFD23F"                        # لون رقم الإصدار وشارة INSTALL / INSTALLED (ذهبي في كل الثيمات)
+
+
 def setColor(widget, hexcolor):
     try:
         widget.instance.setForegroundColor(parseColor(hexcolor))
@@ -598,7 +601,7 @@ def prep_assets(theme_key, anim, splash=False, view="list"):
         for size in ((64, 96) if view == "grid" else (48,)):
             for key, data in getattr(a, "ICONS%d" % size).items():
                 _put("ic%d_%s" % (size, key), data)
-        _put("pill", a.PILLS[theme_key]["off"])
+        _put("pill", a.PILL)
         if view == "grid":
             _put("emblem", a.EMBLEM[theme_key])
         ok = True
@@ -777,7 +780,7 @@ def header_xml():
         pixw("logo_glow", (34, 5, 100, 100)),
         pixw("logo_img", (34, 5, 100, 100), z=3),
         wid("credit", (686, 20, 400, 70), font=24, fg=c["muted"], valign="center", extra='noWrap="1"'),
-        wid("h_ver", (925, 20, 160, 70), font=36, fg=c["acc"], halign="center", valign="center"),
+        wid("h_ver", (925, 20, 160, 70), font=36, fg=GOLD, halign="center", valign="center"),
         wid("h_server", (1090, 20, 340, 70), font=28, fg=c["warn"], halign="right", valign="center"),
         wid("clock", (1560, 4, 300, 62), font=52, fg="#FFFFFF", halign="right", valign="center"),
         wid("date", (1440, 66, 420, 36), font=24, fg=c["muted"], halign="right", valign="center"),
@@ -1443,7 +1446,7 @@ class ListPanel(PanelBase):
     def fillItems(self):
         t = self.t
         txt, sec = hexint(t["text"]), hexint(t["second"])
-        acc = hexint(t["accent"])
+        acc = hexint(GOLD)
         items = self.cats[self.catIdx][1] if self.cats else []
         check = installed_checker()
         pill = pix("pill")
@@ -1464,7 +1467,7 @@ class ListPanel(PanelBase):
             row.append(MultiContentEntryText(pos=(s(574), s(28)), size=(s(180), s(44)), font=2,
                                              flags=RT_HALIGN_CENTER | RT_VALIGN_CENTER,
                                              text="INSTALLED" if done else "INSTALL",
-                                             color=acc, color_sel=0xFFFFFF))
+                                             color=acc, color_sel=acc))
             rows.append(row)
         self["items"].setList(rows)
         if rows:
@@ -1773,7 +1776,7 @@ class GridPanel(PanelBase):
                 inst.hide()
             if it:
                 self["g_pilltxt"].setText("INSTALLED" if done else "INSTALL")
-                setColor(self["g_pilltxt"], self.t["accent"])
+                setColor(self["g_pilltxt"], GOLD)
             else:
                 self["g_pilltxt"].setText("")
         except Exception as e:
@@ -2493,7 +2496,7 @@ def splash_skin():
         pixw("sp_name", (700, 560, 520, 84), z=3),
         wid("sp_text", (460, 560, 1000, 84), font=56, fg="#FFFFFF", bg=c["bg"], halign="center", valign="center", z=3),
         wid("sp_by", (460, 655, 1000, 50), font=30, fg=c["muted"], bg=c["bg"], halign="center", valign="center"),
-        wid("sp_ver", (460, 702, 1000, 48), font=34, fg=c["acc"], bg=c["bg"], halign="center", valign="center"),
+        wid("sp_ver", (460, 702, 1000, 48), font=34, fg=GOLD, bg=c["bg"], halign="center", valign="center"),
         box((960 - bar_w // 2, 780, bar_w, 8), c["line"], 4, z=2),
         '<widget name="sp_bar" %s backgroundColor="%s" cornerRadius="%d" zPosition="3"/>' % (
             rect(960 - bar_w // 2, 780, 10, 8), c["acc"], s(4)),
