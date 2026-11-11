@@ -72,7 +72,7 @@ TITLE = "Major Enigma Panel"
 CREDIT = "By John Kamel"
 # تحديث البانل نفسه (إعادة التثبيت) - ملف installer.sh موجود في جذر المستودع (خارج مجلد MajorPanel)
 INSTALLER_URL = GITHUB_RAW + "/installer.sh"
-PLUGIN_VERSION = "1"                                        # رقم إصدار هذه النسخة (يظهر V11) - غيّره مع كل إصدار
+PLUGIN_VERSION = "11"                                        # رقم إصدار هذه النسخة (يظهر V11) - غيّره مع كل إصدار
 VERSION_URL = GITHUB_RAW + "/Version.txt"                    # ملف الإصدار على GitHub: يحوي رقماً فقط مثل 12
 UPDATE_CMD = 'wget -q --no-check-certificate -O - "%s" | /bin/sh -s norestart' % INSTALLER_URL
 SETTINGS_FILE = "/etc/enigma2/majorpanel_settings.json"      # عرض البانل + الثيم المختار
@@ -186,9 +186,81 @@ THEMES = {
         stops=((245, 196, 81), (255, 160, 60), (255, 120, 90), (120, 140, 255), (90, 170, 255)),
         title_set="warm", sel_key="royal_gold",
         fill=((8, 16, 46), (44, 34, 8)), border=(245, 196, 81), **_BTN, **_OKS),
+    "sakura": dict(
+        name="Sakura Neon", modern=True,
+        bg="#12060E", card="#1E0C18", card2="#2A1121", line="#5A2547", text="#FFEAF4", muted="#C493AE",
+        accent="#FF5FA2", second="#FFC46B", sel="#6A1F47", hdr="#FF5FA2", term="#0B0309",
+        stops=((255, 95, 162), (255, 130, 140), (255, 170, 110), (255, 200, 107), (255, 226, 150)),
+        title_set="warm", sel_key="sakura",
+        fill=((54, 12, 36), (40, 20, 26)), border=(255, 95, 162), **_BTN, **_OKS),
+    "glacier": dict(
+        name="Glacier", modern=True,
+        bg="#050C14", card="#0A1826", card2="#0E2236", line="#24476A", text="#EAF7FF", muted="#88A9C4",
+        accent="#7DE3FF", second="#B8A6FF", sel="#124E78", hdr="#7DE3FF", term="#030811",
+        stops=((125, 227, 255), (110, 190, 255), (150, 160, 255), (184, 166, 255), (220, 190, 255)),
+        title_set="cool", sel_key="glacier",
+        fill=((8, 38, 64), (24, 24, 56)), border=(125, 227, 255), **_BTN, **_OKS),
+    "crimson_gold": dict(
+        name="Crimson Gold", modern=True,
+        bg="#0D0505", card="#1A0A0A", card2="#261010", line="#5A2222", text="#FFF1E6", muted="#C09A86",
+        accent="#FF6A3D", second="#FFC83D", sel="#6B1D12", hdr="#FF6A3D", term="#080303",
+        stops=((240, 60, 90), (255, 100, 70), (255, 150, 50), (255, 200, 61), (255, 226, 120)),
+        title_set="warm", sel_key="crimson_gold",
+        fill=((60, 10, 16), (52, 34, 8)), border=(240, 60, 90), **_BTN, **_OKS),
+    "violet_storm": dict(
+        name="Violet Storm", modern=True,
+        bg="#0A0618", card="#140D2C", card2="#1B1240", line="#3C2A7A", text="#F1EBFF", muted="#A094CC",
+        accent="#B26BFF", second="#4DC8FF", sel="#3A1F8A", hdr="#B26BFF", term="#06030F",
+        stops=((178, 107, 255), (140, 110, 255), (90, 140, 255), (77, 200, 255), (100, 235, 230)),
+        title_set="cool", sel_key="violet_storm",
+        fill=((36, 14, 80), (10, 36, 72)), border=(178, 107, 255), **_BTN, **_OKS),
+    "cyber_lime": dict(
+        name="Cyber Lime", modern=True,
+        bg="#070D06", card="#0F1A0C", card2="#162512", line="#345A22", text="#F1FFE6", muted="#98B88A",
+        accent="#B6F23A", second="#3AD6C8", sel="#3E6A10", hdr="#B6F23A", term="#040803",
+        stops=((182, 242, 58), (120, 230, 90), (58, 214, 200), (60, 170, 255), (110, 130, 255)),
+        title_set="green", sel_key="cyber_lime",
+        fill=((30, 58, 10), (8, 44, 50)), border=(182, 242, 58), **_BTN, **_OKS),
+    "graphite": dict(
+        name="Graphite", modern=False,
+        bg="#121416", card="#1A1D21", card2="#22262B", line="#343A41", text="#E9ECEF", muted="#9AA3AD",
+        accent="#4FD1C5", second="#F6AD55", sel="#2C7A7B", hdr="#2C7A7B", term="#0C0E10",
+        red="#D9534F", green="#2F9E6B", yellow="#B7832F", blue="#2C7A7B",
+        ok="#4FD1A1", bad="#F26D6D", warn="#E5B14A",
+        stops=None, title_set=None, sel_key=None),
+    "midnight_indigo": dict(
+        name="Midnight Indigo", modern=False,
+        bg="#0F1220", card="#171B30", card2="#1E2340", line="#343C66", text="#E6E9FB", muted="#98A0C8",
+        accent="#8B9CFF", second="#7EE0B5", sel="#3A4AA8", hdr="#4C5FD5", term="#0A0D18",
+        red="#D6506B", green="#2FA37A", yellow="#BE8F2E", blue="#4C5FD5",
+        ok="#6EE0AE", bad="#FF6B86", warn="#E8C15A",
+        stops=None, title_set=None, sel_key=None),
+    "forest": dict(
+        name="Forest", modern=False,
+        bg="#0C1511", card="#131F19", card2="#1A2A22", line="#2B4538", text="#E4F1EA", muted="#8CAA9B",
+        accent="#56D39B", second="#E6C45A", sel="#1F7A57", hdr="#1F8F63", term="#08100C",
+        red="#CF4F4A", green="#2E9E62", yellow="#B8912A", blue="#2F7F9E",
+        ok="#56D39B", bad="#F26B66", warn="#E6C45A",
+        stops=None, title_set=None, sel_key=None),
+    "warm_slate": dict(
+        name="Warm Slate", modern=False,
+        bg="#14161A", card="#1C2027", card2="#252A33", line="#3A414D", text="#F0EDE8", muted="#A7A39B",
+        accent="#F0B445", second="#6FB7FF", sel="#8A5E12", hdr="#C98A1C", term="#0E1013",
+        red="#D4524A", green="#3AA06A", yellow="#C98A1C", blue="#3C7FD0",
+        ok="#5CCB8A", bad="#F0675E", warn="#F0B445",
+        stops=None, title_set=None, sel_key=None),
+    "rose_dusk": dict(
+        name="Rose Dusk", modern=False,
+        bg="#16101A", card="#1F1725", card2="#291E31", line="#433050", text="#F3E9F4", muted="#AE98B5",
+        accent="#F08BB4", second="#8FD3C8", sel="#8E3A66", hdr="#B04B80", term="#0F0A13",
+        red="#D9507F", green="#3BA38F", yellow="#C08B3A", blue="#7A6AD0",
+        ok="#7ED9B7", bad="#FF6F9A", warn="#F2C265",
+        stops=None, title_set=None, sel_key=None),
 }
 MODERN_ORDER = ["blue_fire", "twilight", "ember_night", "ocean_sun", "aurora", "royal_gold",
+                "sakura", "glacier", "crimson_gold", "violet_storm", "cyber_lime",
                 "neon_blue", "orange", "yellow", "green", "purple", "red", "aqua"]
+CLASSIC_ORDER = ["classic", "graphite", "midnight_indigo", "forest", "warm_slate", "rose_dusk"]
 
 _state = dict(DEFAULT_SETTINGS)
 
@@ -386,6 +458,37 @@ def get_box_details():
     if build:
         image += "  (build %s)" % build
     return title, image, [build_id, _boxinfo("model"), name, title]
+
+
+def get_cpu():
+    """CPU line: chipset / SoC (+ architecture and number of cores), e.g. 'BCM72604 | ARMv8 | 4 cores'."""
+    info = read_file("/proc/cpuinfo")
+    cores = len(re.findall(r"^processor\s*:", info, re.M))
+
+    def field(*keys):
+        for key in keys:
+            m = re.search(r"^%s\s*:\s*(.+)$" % re.escape(key), info, re.M | re.I)
+            if m and m.group(1).strip():
+                return m.group(1).strip()
+        return ""
+
+    chip = _boxinfo("socfamily", "chipset") or read_file("/proc/stb/info/chipset") or field("Hardware")
+    if not chip:
+        model = field("cpu model")                                  # MIPS: "Broadcom BMIPS5000 V1.0"
+        chip = re.sub(r"^broadcom\s+", "", model, flags=re.I)
+    chip = chip.strip().upper()
+    if re.match(r"^\d{4}\w*$", chip):                               # "7252S" -> "BCM7252S"
+        chip = "BCM" + chip
+    try:
+        machine = os.uname().machine.lower()
+    except Exception:
+        machine = ""
+    arch = {"aarch64": "ARMv8", "armv8l": "ARMv8", "armv7l": "ARMv7", "armv7": "ARMv7", "mips": "MIPS",
+            "mipsel": "MIPS"}.get(machine, machine.upper())
+    parts = [p for p in (chip, arch) if p]
+    if cores:
+        parts.append("%d core%s" % (cores, "" if cores == 1 else "s"))
+    return " | ".join(parts) or "Unknown"
 
 
 def png_size(path):
@@ -749,7 +852,8 @@ def device_layout(y0, pic_h):
     L["pic"] = (y, pic_h); y += pic_h + 2
     L["image"] = (y, 28); y += 28
     L["py"] = (y, 28); y += 28
-    L["ip"] = (y, 30); y += 36
+    L["ip"] = (y, 30); y += 32
+    L["cpu"] = (y, 30); y += 36
     L["ram"] = (y, 30); y += 32
     L["ram_track"] = (y, 10); y += 20
     L["hdd"] = (y, 30); y += 32
@@ -765,6 +869,7 @@ def device_xml(L, x=1340, width=510):
         wid("b_image", (x, L["image"][0], width, L["image"][1]), font=22, fg=c["muted"], halign="center", valign="center"),
         wid("b_py", (x, L["py"][0], width, L["py"][1]), font=22, fg=c["second"], halign="center", valign="center"),
         wid("b_ip", (x, L["ip"][0], width, L["ip"][1]), font=24, fg=c["acc"], halign="center", valign="center"),
+        wid("b_cpu", (x, L["cpu"][0], width, L["cpu"][1]), font=24, fg=c["text"], halign="center", valign="center"),
         wid("b_ram", (x, L["ram"][0], width, L["ram"][1]), font=24, fg=c["text"], halign="center", valign="center"),
         barw("ram_bar", (x, L["ram_track"][0], width, 10), c["card"]),
         wid("b_hdd", (x, L["hdd"][0], width, L["hdd"][1]), font=24, fg=c["text"], halign="center", valign="center"),
@@ -818,7 +923,7 @@ class PanelBase(Screen):
     NO_NATIVE = False                   # Grid: القوائم لا تلتقط أسهم الريموت بنفسها
     """Everything shared by the panel screens: header, clock, server state, device info
     (RAM / HDD / IP ...), animated title, loading the commands, search, install, settings."""
-    DEV = device_layout(585, 80)          # lower-right card
+    DEV = device_layout(585, 56)          # lower-right card (the box picture is a bit smaller to make room for CPU)
     PIC = (1340, 640, 510, 80)
     HINT = ""
 
@@ -840,7 +945,7 @@ class PanelBase(Screen):
         self.tick = 0
 
         for name in ("title", "credit", "h_ver", "h_server", "clock", "date", "b_model", "b_image", "b_py", "b_ip",
-                     "b_ram", "b_hdd"):
+                     "b_cpu", "b_ram", "b_hdd"):
             self[name] = Label("")
         self["title"].setText(TITLE)
         self["credit"].setText(CREDIT)
@@ -1084,6 +1189,10 @@ class PanelBase(Screen):
         self["b_model"].setText(title)
         self["b_image"].setText(image)
         self["b_py"].setText("Python %d.%d.%d" % tuple(sys.version_info[:3]))
+        try:
+            self["b_cpu"].setText("CPU   %s" % get_cpu())
+        except Exception as e:
+            dlog_error("get_cpu: %s" % e)
         try:
             path = find_box_image(ids)
             if path:
@@ -1883,8 +1992,11 @@ class SettingsScreen(Screen):
         self.mainmenu = st["mainmenu"]
         self.splash = st["splash"]
         self.autoupdate = st["autoupdate"]
-        self.style = "classic" if st["theme"] == "classic" else "modern"
-        self.color = st["theme"] if st["theme"] != "classic" else MODERN_ORDER[0]
+        cur = st["theme"] if st["theme"] in THEMES else MODERN_ORDER[0]
+        is_modern = THEMES[cur]["modern"]
+        self.style = "modern" if is_modern else "classic"
+        self.color = cur if is_modern else MODERN_ORDER[0]          # لون Modern المختار
+        self.ccolor = cur if not is_modern else CLASSIC_ORDER[0]    # لون Classic المختار
 
         self["s_title"] = Label(u"الإعدادات | Settings")
         self["rows"] = MenuList([], enableWrapAround=True, content=eListboxPythonMultiContent)
@@ -1907,7 +2019,7 @@ class SettingsScreen(Screen):
         self.onClose.append(self.releaseKeys)
 
     def themeKey(self):
-        return "classic" if self.style == "classic" else self.color
+        return self.color if self.style == "modern" else self.ccolor
 
     def refreshAll(self):
         idx = self["rows"].getSelectionIndex() if self["rows"].list else 0
@@ -1916,7 +2028,7 @@ class SettingsScreen(Screen):
         values = (
             ("View", "List" if self.view == "list" else "Grid", True),
             ("Style", "Classic" if self.style == "classic" else "Modern", True),
-            ("Color", THEMES[self.color]["name"] if modern else u"— (Modern only)", modern),
+            ("Color", THEMES[self.themeKey()]["name"], True),
             ("Animation", "On" if self.anim else "Off", True),
             ("Splash", "On" if self.splash else "Off", True),
             ("Auto Check Update", "On" if self.autoupdate else "Off", True),
@@ -1962,9 +2074,14 @@ class SettingsScreen(Screen):
             self.view = "grid" if self.view == "list" else "list"
         elif row == "style":
             self.style = "modern" if self.style == "classic" else "classic"
-        elif row == "color" and self.style == "modern":
-            i = (MODERN_ORDER.index(self.color) + step) % len(MODERN_ORDER)
-            self.color = MODERN_ORDER[i]
+        elif row == "color":
+            order = MODERN_ORDER if self.style == "modern" else CLASSIC_ORDER
+            cur = self.color if self.style == "modern" else self.ccolor
+            nxt = order[(order.index(cur) + step) % len(order)]
+            if self.style == "modern":
+                self.color = nxt
+            else:
+                self.ccolor = nxt
         elif row == "anim":
             self.anim = not self.anim
         elif row == "splash":
