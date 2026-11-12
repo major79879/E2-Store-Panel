@@ -21,6 +21,7 @@ import sys
 import textwrap
 import time
 import traceback
+import zlib
 from urllib.request import Request, urlopen
 
 from enigma import (eConsoleAppContainer, eListboxPythonMultiContent, getDesktop, gFont,
@@ -844,13 +845,67 @@ def barw(name, r, bg, z=3):
             'transparent="0" zPosition="%d"/>' % (name, rect(*r), bg, bg, z))
 
 
+def _hex_rgb(h):
+    h = h.lstrip("#")
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def make_rounded_sel(path, w, h, bg_hex, fill_hex, inset=5, radius=16, border=2.0):
+    """Writes an opaque PNG (w x h): the card color with a rounded, filled selection bar and a lighter thin edge -
+    the Classic themes' version of the Modern themes' rounded selection. Only the corner rows are computed."""
+    bg, fill = _hex_rgb(bg_hex), _hex_rgb(fill_hex)
+    edge = tuple(min(255, int(c + (255 - c) * 0.38)) for c in fill)
+    cx, cy = w / 2.0, h / 2.0
+    hw, hh = w / 2.0 - inset, h / 2.0 - inset
+
+    def pixel(x, y):
+        qx = abs(x + 0.5 - cx) - (hw - radius)
+        qy = abs(y + 0.5 - cy) - (hh - radius)
+        d = (max(qx, 0.0) ** 2 + max(qy, 0.0) ** 2) ** 0.5 + min(max(qx, qy), 0.0) - radius
+        a = min(1.0, max(0.0, 0.5 - d))
+        tt = min(1.0, max(0.0, d + border + 0.5))
+        return bytes(int(bg[i] * (1 - a) + (fill[i] * (1 - tt) + edge[i] * tt) * a + 0.5) for i in range(3))
+
+    edge_w = inset + radius                                   # columns that are not constant
+    def row(y):
+        left = [pixel(x, y) for x in range(edge_w)]
+        mid = pixel(w // 2, y)
+        return b"".join(left) + mid * (w - 2 * edge_w) + b"".join(reversed(left))
+    plain = None
+    rows = []
+    for y in range(h):
+        if y < edge_w or y >= h - edge_w:
+            rows.append(b"\x00" + row(y))
+        else:
+            if plain is None:
+                plain = b"\x00" + row(y)
+            rows.append(plain)
+    raw = b"".join(rows)
+
+    def chunk(tag, data):
+        c = struct.pack(">I", len(data)) + tag + data
+        return c + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+    png = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+           + chunk(b"IDAT", zlib.compress(raw, 6)) + chunk(b"IEND", b""))
+    with open(path, "wb") as f:
+        f.write(png)
+
+
 def sel_attr(kind, w, h):
-    """selectionPixmap attribute (neon border) for a list. Pictures are pixel-exact (1920 wide
-    desktops only) and exist only for the Modern themes; otherwise the solid color is used."""
+    """selectionPixmap attribute (rounded selection) for a list. Pictures are pixel-exact (1920 wide desktops
+    only): Modern themes use the neon pictures from assets.py, Classic themes get a rounded bar made on the fly."""
     t = T()
-    p = asset_path("sel_%s_%s" % (kind, _state["theme"]))
-    if not t["modern"] or s(w) != w or not os.path.isfile(p):
+    if s(w) != w:
         return ""
+    p = asset_path("sel_%s_%s" % (kind, _state["theme"]))
+    if not os.path.isfile(p):
+        if t["modern"]:
+            return ""
+        try:
+            make_rounded_sel(p, w, h, t["card"], t["sel"])
+        except Exception as e:
+            dlog_error("classic selection: %s" % e)
+            return ""
     return ' selectionPixmap="%s"' % p
 
 
