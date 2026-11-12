@@ -222,6 +222,9 @@ wget -q "--no-check-certificate" https://raw.githubusercontent.com/islam-2412/Se
 ## === # E2 Currency Pro - Ramzus # = # أداة لمعرفة أسعار العملات والذهب # === #
 wget -qO- https://raw.githubusercontent.com/ramzus007/E2-Currency-Pro/main/installer.sh | sh
 
+## === # Signal Meter - Ibrahem Hamdy # = # بلاجن متطور يمكنك من ضبط اشارة الطبق عن بعد عن طريق ربط البلاجن بتطبيق أندرويد يتصل عن بعد # === #
+u=https://raw.githubusercontent.com/xximhxx/SatEnigmaFinder/main; f=$(mktemp) && wget -O "$f" "$u/install-signalmeter.sh" && sh "$f" "$u"
+
 ## ============================== +++ Bouquets +++ ============================= ##
 
 ## === # Abertis 30W - Ciefp # = # اضافة مفضلة قنوات ابيرتيس الاسبانية الارضية لملف قنواتك # === #
