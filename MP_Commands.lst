@@ -58,7 +58,7 @@ wget -qO - http://dreambox4u.com/mosadpro/scripts/timeshift-delay.sh | sh
 ## === # Custom Channel Selection - Mohamed Nasser # = # أداة التحكم في شكل عرض قائمة القنوات # === ## 
 wget -qO - https://raw.githubusercontent.com/popking159/customchannelselection/refs/heads/main/myinstaller.sh | /bin/sh
 
-## === # sky Blue Scan - Mohamed El Fatlawy # = # بلاجن التحكم ترتيب وحذف القنوات # === ## 
+## === # sky Blue Scan - Mohamed El Fatlawy # = # أداة تمكنك من التحكم في ترتيب وحذف القنوات # === ## 
 wget -O /tmp/install-skybluescan.sh https://updates.skyblue1.us/e2/install-skybluescan.sh && sh /tmp/install-skybluescan.sh && reboot
 
 ## === # New Virtual Keyboard - Fairbird # = # أداة كيبوورد متطورة # === ## 
