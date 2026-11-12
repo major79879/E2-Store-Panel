@@ -924,8 +924,6 @@ def buttons_xml(hint_extra=""):
 
 # --------------------------------- الشاشة الأساسية ---------------------------
 SERVER_OFFLINE_MSG = u"تعذّر الاتصال بسيرفر البانل - تحقق من الإنترنت | Cannot connect to panel server"
-PAGE2_HINT = ("RED : favorite     GREEN : select     YELLOW : filter / sort     BLUE : uninstall     "
-              "0 : back to main keys     OK : install")
 
 # سياقات الأزرار المعتادة فقط. (لا نربط سياقات وضع التلفاز مثل InfobarChannelSelection حتى لا نؤثر
 # على أزرار الاتجاهات بعد الخروج من البانل)
@@ -993,7 +991,6 @@ class PanelBase(Screen):
             "pageUp": self.prevCat, "pageDown": self.nextCat,
             "1": self.toggleFav, "2": self.cycleFilter,     # اختصارات تعمل في أي صفحة
             "3": self.toggleMark, "4": self.askUninstall,
-            "0": self.togglePage,
         }
         self["actions"] = ActionMap(ACTION_CONTEXTS, dict((k, safe(v)) for k, v in keys.items()), -1)
 
@@ -1426,40 +1423,26 @@ class PanelBase(Screen):
 
     # ----------------------- الأزرار الملونة (صفحتان) ------------------------
     def keyRed(self):
-        self.exit() if self.page == 0 else self.toggleFav()
+        self.exit()
 
     def keyGreen(self):
-        if self.page == 0:
-            self.askQueue() if _ui["queue"] else self.askInstall()
-        else:
-            self.toggleMark()
+        self.askQueue() if _ui["queue"] else self.askInstall()
 
     def keyYellow(self):
-        self.search() if self.page == 0 else self.cycleFilter()
+        self.search()
 
     def keyBlue(self):
-        self.refresh() if self.page == 0 else self.askUninstall()
-
-    def togglePage(self):
-        self.page = 1 - self.page
-        self.updateButtons()
-        self.setServer(self.serverState)            # يحدّث سطر المساعدة
+        self.refresh()
 
     def hintText(self):
-        return PAGE2_HINT if self.page else self.HINT
+        return self.HINT
 
     def updateButtons(self):
         n = len(_ui["queue"])
-        if self.page == 0:
-            labels = (u"خروج | Exit",
-                      (u"تثبيت (%d) | Install (%d)" % (n, n)) if n else u"تثبيت | Install",
-                      u"بحث | Search",
-                      u"تحديث الأوامر | Refresh")
-        else:
-            labels = (u"المفضلة | Favorite",
-                      (u"تحديد (%d) | Select" % n) if n else u"تحديد | Select",
-                      (u"فلتر | %s" % FILTERS[_ui["filter"]][1]) if _ui["filter"] else u"فلتر | Filter",
-                      u"إزالة | Uninstall")
+        labels = (u"خروج | Exit",
+                  (u"تثبيت (%d) | Install (%d)" % (n, n)) if n else u"تثبيت | Install",
+                  u"بحث | Search",
+                  u"تحديث الأوامر | Refresh")
         for name, text in zip(("key_red", "key_green", "key_yellow", "key_blue"), labels):
             self[name].setText(text)
         self.updateCart(n)
@@ -1563,7 +1546,7 @@ class PanelBase(Screen):
         self.updateButtons()
         self.refreshInstalled()
         self.stepNext()
-        self.flash(u"Selected for install: %d     (green button on the first page installs them)" % n if n
+        self.flash(u"Selected for install: %d     (green button installs them)" % n if n
                    else u"Selection is empty")
 
     def askQueue(self):
@@ -2143,7 +2126,7 @@ def update_item():
 # --------------------------------- عرض القائمة (List) -------------------------
 class ListPanel(PanelBase):
     HINT = ("LEFT/RIGHT : section   UP/DOWN : select   OK : install   1 : fav   2 : filter   3 : select   "
-            "4 : uninstall   0 : more   BLUE : refresh   MENU : settings   INFO : update")
+            "4 : uninstall   BLUE : refresh   MENU : settings   INFO : update")
 
     def buildSkin(self):
         c = tc()
@@ -2347,7 +2330,7 @@ class GridPanel(PanelBase):
     DEV = device_layout(125, 110)
     PIC = (1340, DEV["pic"][0], 510, 110)
     HINT = ("ARROWS : move   UP/DOWN at the edge : section   OK : install   1 : fav   2 : filter   3 : select   "
-            "4 : uninstall   0 : more   BLUE : refresh   MENU : settings")
+            "4 : uninstall   BLUE : refresh   MENU : settings")
 
     def buildSkin(self):
         c = tc()
