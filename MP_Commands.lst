@@ -6,6 +6,11 @@ wget -qO- https://raw.githubusercontent.com/major79879/LinuxCommands/refs/heads/
 ## === # Update SoftCam Keys - John Kamel # = # تحديث ملف شفرات السوفتكام # === ##
 wget -qO- https://raw.githubusercontent.com/major79879/LinuxCommands/refs/heads/main/update_linuxcommands.sh | bash
 
+## ================================= +++ Liberary +++ ================================= ##
+
+## === # Chromium - OpenATV # = # أمر إضافة اليوتيوب للصورة # === ##
+opkg install enigma2-plugin-extensions-chromium
+
 ## ================================= +++ Panels +++ ================================= ##
 
 ## === # AJPanel - AMAJamry # = # لوحة أدوات متكاملة لإدارة إضافات وأدوات إنيجما فى مكان واحد # === ##
