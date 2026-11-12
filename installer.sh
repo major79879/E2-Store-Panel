@@ -8,6 +8,18 @@ REPO="$BASE/MajorPanel"
 DIR="/usr/lib/enigma2/python/Plugins/Extensions/MajorPanel"
 TMP="/tmp/majorpanel_update"
 
+# طباعة شعار MAJOR بـ ASCII Art
+echo "====================================================================="
+echo "  __  __    _      _  ____  ____     ____     _    _   _ _____ _     "
+echo " |  \/  |  / \    | |/ __ \|  _ \   |  _ \   / \  | \ | | ____| |    "
+echo " | |\/| | / _ \   | | |  | | |_) |  | |_) | / _ \ |  \| |  _| | |    "
+echo " | |  | |/ ___ \ _|_| |  | |  _ <   |  __/ / ___ \| |\  | |___| |___ "
+echo " |_|  |_/_/   \_\___|\____/|_| \_\  |_|   /_/   \_\_| \_|_____|_____|"
+echo "                                                                     "
+echo "                     MAJOR ENIGMA PANEL UPDATER                      "
+echo "                      Developed by: John Kamel                       "
+echo "====================================================================="
+
 C0='\033[0m'; CB='\033[0;34m'; CC='\033[0;36m'; CG='\033[0;32m'; CY='\033[1;33m'; CR='\033[1;31m'
 say() { printf '%b%s%b\n' "$1" "$2" "$C0"; }
 
