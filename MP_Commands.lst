@@ -1,3 +1,11 @@
+## ================================= +++ Fast Order +++ ================================= ##
+
+## === # Update Linux Commands - John Kamel # = # تحديث ملف أوامر اللينوكس # === ##
+wget -qO- https://raw.githubusercontent.com/major79879/LinuxCommands/refs/heads/main/update_linuxcommands.sh | bash
+
+## === # Update SoftCam Keys - John Kamel # = # تحديث ملف شفرات السوفتكام # === ##
+wget -qO- https://raw.githubusercontent.com/major79879/LinuxCommands/refs/heads/main/update_linuxcommands.sh | bash
+
 ## ================================= +++ Panels +++ ================================= ##
 
 ## === # AJPanel - AMAJamry # = # لوحة أدوات متكاملة لإدارة إضافات وأدوات إنيجما فى مكان واحد # === ##
