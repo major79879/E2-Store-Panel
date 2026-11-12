@@ -6,11 +6,6 @@ wget -qO- https://raw.githubusercontent.com/major79879/LinuxCommands/refs/heads/
 ## === # Update SoftCam Keys - John Kamel # = # تحديث ملف شفرات السوفتكام # === ##
 wget -qO- https://raw.githubusercontent.com/major79879/LinuxCommands/refs/heads/main/update_linuxcommands.sh | bash
 
-## ================================= +++ Liberary +++ ================================= ##
-
-## === # Chromium - OpenATV # = # أمر إضافة اليوتيوب للصورة # === ##
-opkg install enigma2-plugin-extensions-chromium
-
 ## ================================= +++ Panels +++ ================================= ##
 
 ## === # AJPanel - AMAJamry # = # لوحة أدوات متكاملة لإدارة إضافات وأدوات إنيجما فى مكان واحد # === ##
@@ -44,6 +39,9 @@ wget -O /tmp/online4tech.sh https://online4tech.github.io/online4Tech/install.sh
 wget -O - https://raw.githubusercontent.com/wwwgoper77-wq/MohamedStore/main/install.sh | sh
 
 ## ============================== +++ Tools +++ ============================== ##
+
+## === # Chromium - OpenATV # = # أمر إضافة أداة تشغيل اليوتيوب للصورة # === ##
+opkg install enigma2-plugin-extensions-chromium
 
 ## === # Arabic Savior - Fairbird # = # تحسين دعم اللغة العربية وإصلاح مشاكل الخطوط والترجمة # === ##
 wget https://raw.githubusercontent.com/fairbird/ArabicSavior/main/installer.sh -O - | /bin/sh
