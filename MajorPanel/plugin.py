@@ -1703,7 +1703,7 @@ FILTERS = (("all", u"All"), ("az", u"Sort A-Z"), ("todo", u"Not installed"), ("d
 _PKG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9+._-]*$")
 _STATUS_RE = re.compile(r"\binstall\b.*\binstalled\b")
 _PKG_PREFIX_RE = re.compile(r"^enigma2-plugin-(extensions|systemplugins|softcams|skins|picons|settings|drivers|channel-settings)?-?")
-_installed = {"data": None, "sys": None}
+_installed = {"data": None, "sys": None, "res": {}}
 _ui = {"filter": 0, "queue": [], "new": set()}        # حالة الواجهة: تبقى عند إعادة فتح البانل وتُمسح عند الخروج
 
 
@@ -1868,7 +1868,7 @@ def names_of(dirs, pkgs):
 
 
 def name_match(it, names):
-    """Old name heuristic - used ONLY for soft records (older panel versions, or 'success but nothing new')."""
+    """Matches an item to a plugin already on the box by name (folder names + installed package names)."""
     n = _norm(it.get("name"))
     if len(n) < 3:
         return False
@@ -1917,6 +1917,7 @@ def system_state():
 def reset_installed_cache():
     _installed["data"] = None
     _installed["sys"] = None
+    _installed["res"] = {}
 
 
 def removable_pkgs(rec):
@@ -1933,17 +1934,19 @@ def record_alive(rec, dirs, pkgs):
 
 
 def installed_checker():
-    """check(item) -> True when the item is really on the box: a folder / package recorded by the panel still exists
-    (or, for soft records only, the old name match still holds)."""
+    """check(item) -> True when the item is on the box: either the panel recorded it (a recorded folder / package
+    still exists), or a plugin folder / package already on the receiver matches its name (plugins installed
+    by other means). Results are cached until the panel is reopened or a run ends."""
     db = load_installed()
     dirs, pkgs, names = system_state()
+    res = _installed["res"]
 
     def check(it):
         key = item_key(it)
-        rec = db["items"].get(key)
-        if rec is not None:
-            return record_alive(rec, dirs, pkgs)
-        return key in db["keys"] and name_match(it, names)
+        if key not in res:
+            rec = db["items"].get(key)
+            res[key] = record_alive(rec, dirs, pkgs) if rec is not None else name_match(it, names)
+        return res[key]
     return check
 
 
