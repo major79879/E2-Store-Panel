@@ -110,9 +110,6 @@ wget -qO- https://raw.githubusercontent.com/xximhxx/Alkuds-ipaudio-MAC-Xtreme-Pl
 ## === # My Hits - Mohamed Nasser # = # أداة تحميل وتشغيل الأغاني # === ##
 wget -qO - https://raw.githubusercontent.com/popking159/myhits/refs/heads/main/myinstaller.sh | /bin/sh
 
-## === # Audio Shift - Xfayez95 # = # أداة سريعة لتبديل المسارات الصوتية داخل القنوات والأفلام بسهولة # === ##
-wget -O - https://xfayez95.github.io/audioshift/installer.sh | sh
-
 ## ============================== +++ Subtitle +++ ============================ ##
 
 ## === # Subs Support Pro - Mohamed Nasser # = # أداة لتحميل وإدارة الترجمات للمحتوى المرئى # === ##
