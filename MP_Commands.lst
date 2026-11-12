@@ -109,8 +109,11 @@ wget -qO - https://raw.githubusercontent.com/popking159/myhits/refs/heads/main/m
 ## === # Subs Support Pro - Mohamed Nasser # = # أداة لتحميل وإدارة الترجمات للمحتوى المرئى # === ##
 wget -qO - https://raw.githubusercontent.com/popking159/SubsSupportPro/refs/heads/main/myinstaller.sh | /bin/sh
 
-## === # My Translator - Ismail El Khouly # = # أداة لترجمة النصوص والصوت داخل القنوات # === ##
+## === # My Translator V1.76 - Ismail El Khouly # = # أداة لترجمة النصوص والصوت داخل القنوات # === ##
 wget -O /tmp/mytranslator.ipk "https://github.com/ismailelkhooly/Ismail-/raw/refs/heads/main/enigma2-plugin-extensions-mytranslator_1.76.ipk" && opkg install --force-reinstall /tmp/mytranslator.ipk && rm -f /tmp/mytranslator.ipk
+
+## === # My Translator V1.80 - Ismail El Khouly # = # أداة لترجمة النصوص والصوت داخل القنوات # === ##
+wget -O /tmp/mytranslator.ipk "https://github.com/ismailelkhooly/Ismail-/releases/download/V1.80/enigma2-plugin-extensions-mytranslator_1.80.ipk" && opkg install /tmp/mytranslator.ipk && rm -f /tmp/mytranslator.ipk
 
 ## === # Subextractor Lite - Arian 7S # = # أداة لاستخراج الترجمات المدمجة وإنشاء ملفات ترجمة مستقلة # === ##
 wget https://raw.githubusercontent.com/Arian7s/SubExtractorLite/main/installer.sh -O - | /bin/sh
