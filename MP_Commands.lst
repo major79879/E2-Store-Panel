@@ -11,7 +11,7 @@ wget -qO- https://raw.githubusercontent.com/major79879/LinuxCommands/refs/heads/
 ## === # AJPanel - AMAJamry # = # لوحة أدوات متكاملة لإدارة إضافات وأدوات إنيجما فى مكان واحد # === ##
 wget https://raw.githubusercontent.com/AMAJamry/AJPanel/main/installer.sh -O - | /bin/sh
 
-## === # E2 Store - Robin John # = # لوحة أدوات وإضافات متطورة ومتكاملة للإنيجما مع امكانية الاتصال بتطبيق الموبايل وايضا بالكمبيوتر # === ##
+## === # E2 Store Panel - Robin John # = # لوحة أدوات وإضافات متطورة ومتكاملة للإنيجما مع امكانية الاتصال بتطبيق الموبايل وايضا بالكمبيوتر # === ##
 cd /tmp && wget --no-check-certificate -O Panel_2.0.1_all.ipk https://major309robin.github.io/E2-Store/Panel_2.0.1_all.ipk && opkg install --force-reinstall Panel_2.0.1_all.ipk
 
 ## === # Linuxsat panel - Belfagor # = # لوحة شاملة تجمع عشرات الأدوات والإضافات والخدمات # === ##
