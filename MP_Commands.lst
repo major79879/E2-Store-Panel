@@ -26,7 +26,7 @@ wget -q "--no-check-certificate" https://raw.githubusercontent.com/Ham-ahmed/G12
 ## === # Emil Store - Emil Nabil # = # لوحة شاملة تجمع عشرات الأدوات والإضافات والخدمات # === ##
 wget https://raw.githubusercontent.com/emilnabil/download-plugins/refs/heads/main/EmilPanelPro/emilpanelpro.sh -O - | /bin/sh
 
-## === # Enigma Play Repo - Ahmad Arjan # = # لوحة شاملة تجمع عشرات الأدوات والإضافات والخدمات # === ##
+## === # Enigma Play - Ahmad Arjan # = # لوحة شاملة تجمع عشرات الأدوات والإضافات والخدمات # === ##
 wget -qO- https://raw.githubusercontent.com/Ahmadarjan1/EnigmaPlay-Repo/main/install.sh | sh
 
 ## === # Panel AIO - Oli Oli # = # لوحة شاملة تجمع عشرات الأدوات والإضافات والخدمات # === ##
