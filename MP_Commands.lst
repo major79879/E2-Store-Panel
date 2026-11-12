@@ -40,9 +40,6 @@ wget -O - https://raw.githubusercontent.com/wwwgoper77-wq/MohamedStore/main/inst
 
 ## ============================== +++ Tools +++ ============================== ##
 
-## === # Chromium - OpenATV # = # أمر إضافة أداة تشغيل اليوتيوب للصورة # === ##
-opkg install enigma2-plugin-extensions-chromium
-
 ## === # Arabic Savior - Fairbird # = # تحسين دعم اللغة العربية وإصلاح مشاكل الخطوط والترجمة # === ##
 wget https://raw.githubusercontent.com/fairbird/ArabicSavior/main/installer.sh -O - | /bin/sh
 
@@ -63,6 +60,9 @@ wget -qO - https://raw.githubusercontent.com/popking159/customchannelselection/r
 
 ## === # sky Blue Scan - Mohamed El Fatlawy # = # أداة تمكنك من التحكم في ترتيب وحذف القنوات # === ## 
 wget -O /tmp/install-skybluescan.sh https://updates.skyblue1.us/e2/install-skybluescan.sh && sh /tmp/install-skybluescan.sh && reboot
+
+## === # Backup Flash - Fairbird # = # أداة لإنشاء نسخة احتياطية كاملة من النظام الحالي واستعادتها بسهولة عند الحاجة # === ##
+wget https://raw.githubusercontent.com/fairbird/backupflash/main/installer.sh -O - | /bin/sh
 
 ## === # New Virtual Keyboard - Fairbird # = # أداة كيبوورد متطورة # === ## 
 wget https://raw.githubusercontent.com/fairbird/NewVirtualKeyBoard/main/installer.sh -O - | /bin/sh
