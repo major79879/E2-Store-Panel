@@ -72,7 +72,7 @@ TITLE = "Major Enigma Panel"
 CREDIT = "By John Kamel"
 # تحديث البانل نفسه (إعادة التثبيت) - ملف installer.sh موجود في جذر المستودع (خارج مجلد MajorPanel)
 INSTALLER_URL = GITHUB_RAW + "/installer.sh"
-PLUGIN_VERSION = "1"                                        # رقم إصدار هذه النسخة (يظهر V11) - غيّره مع كل إصدار
+PLUGIN_VERSION = "11"                                        # رقم إصدار هذه النسخة (يظهر V11) - غيّره مع كل إصدار
 VERSION_URL = GITHUB_RAW + "/Version.txt"                    # ملف الإصدار على GitHub: يحوي رقماً فقط مثل 12
 UPDATE_CMD = 'wget -q --no-check-certificate -O - "%s" | /bin/sh -s norestart' % INSTALLER_URL
 SETTINGS_FILE = "/etc/enigma2/majorpanel_settings.json"      # عرض البانل + الثيم المختار
@@ -923,8 +923,8 @@ class PanelBase(Screen):
     NO_NATIVE = False                   # Grid: القوائم لا تلتقط أسهم الريموت بنفسها
     """Everything shared by the panel screens: header, clock, server state, device info
     (RAM / HDD / IP ...), animated title, loading the commands, search, install, settings."""
-    DEV = device_layout(585, 56)          # lower-right card (the box picture is a bit smaller to make room for CPU)
-    PIC = (1340, 640, 510, 80)
+    DEV = device_layout(575, 72)          # lower-right card
+    PIC = (1340, DEV["pic"][0], 510, DEV["pic"][1])      # always the same area the layout reserved
     HINT = ""
 
     def __init__(self, session):
@@ -1512,7 +1512,7 @@ class ListPanel(PanelBase):
             box((1340, 352, 510, 2), c["line"], z=2),
             wid("d_desc_h", (1340, 364, 510, 34), font=24, fg=c["acc"], halign="right"),
             wid("d_desc", (1340, 402, 510, 150), font=32, fg=c["text"], halign="right", valign="top"),
-            box((1310, 585, 570, 350), c["card"], 24),
+            box((1310, 575, 570, 360), c["card"], 24),
             device_xml(self.DEV),
             buttons_xml(),
             '</screen>',
