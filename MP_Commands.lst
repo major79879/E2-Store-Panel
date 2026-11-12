@@ -87,8 +87,11 @@ wget https://raw.githubusercontent.com/fairbird/KeyAdder/main/installer.sh -O - 
 ## === # Fury Biss - Islam Salama # = # أداة للبحث عن الفيدات وإظهار وإدخال شفراتها # === ##
 wget -q "--no-check-certificate" https://raw.githubusercontent.com/islam-2412/FuryBiss/refs/heads/main/fury/installer.sh -O - | /bin/sh
 
-## === # E2 Biss Key Editor - Ismail El Khouly # = # أداة لإدخال شفرات القنوات # === ##
+## === # Satelliweb E2 - Abd Elwahab # = # أداة متخصصة لمتابعة بيانات وأخبار الأقمار والقنوات # === ##
 wget -q -O - https://raw.githubusercontent.com/ismail9875/E2BissKeyEditor/refs/heads/main/installer.sh | /bin/bash
+
+## === # E2 Biss Key Editor - Ismail El Khouly # = # أداة لإدخال شفرات القنوات # === ##
+wget -q --no-check-certificate http://dreambox4u.com/dreamarabia/Satelliweb_e2/install_satelliweb_test.sh -O - | bash
 
 ## ============================== +++ Audio +++ ============================== ##
 
