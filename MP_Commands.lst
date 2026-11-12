@@ -231,6 +231,9 @@ wget -qO- https://raw.githubusercontent.com/ramzus007/E2-Currency-Pro/main/insta
 ## === # Signal Meter - Ibrahem Hamdy # = # أداة متطورة تمكنك من ضبط إشارة الطبق عن بعد عن طريق ربط البلاجن بتطبيق أندرويد يتصل عن بعد # === #
 u=https://raw.githubusercontent.com/xximhxx/SatEnigmaFinder/main; f=$(mktemp) && wget -O "$f" "$u/install-signalmeter.sh" && sh "$f" "$u"
 
+## === # Simply Cams - Ahmed Mohammed Abbas # = # أداة متطورة تمكنك من مشاهدة كاميرات منزلك على الرسيفر # === #
+wget -q -O - https://raw.githubusercontent.com/Ahmed-Mohammed-Abbas/SimplyCams/main/installer.sh | sh
+
 ## ============================== +++ Bouquets +++ ============================= ##
 
 ## === # Abertis 30W - Ciefp # = # اضافة مفضلة قنوات ابيرتيس الاسبانية الارضية لملف قنواتك # === #
