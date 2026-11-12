@@ -150,7 +150,7 @@ wget -q --no-check-certificate "https://raw.githubusercontent.com/ahmedhussein43
 ## === # Ultra Stalker - Ahmed El Hadary # = # أداة إضافة و تشغيل إشتراكات الأي بي تي في # === ## 
 wget -qO- https://raw.githubusercontent.com/K3bOra/-UltraStalker/main/install.sh | /bin/sh
 
-## === # Tivi Mate E2 - Opes Boy # أداة إضافة و تشغيل إشتراكات الأي بي تي في # === ## 
+## === # Tivi Mate E2 - Opes Boy # = # أداة إضافة و تشغيل إشتراكات الأي بي تي في # === ## 
 wget -qO- https://raw.githubusercontent.com/opesboy/TiviMateE2/main/install.sh | sh
 
 ## =============================== +++ Skins +++ ============================== ##
