@@ -3,6 +3,8 @@
 #  Major Enigma Panel  -  لوحة أوامر لينوكس بواجهة عصرية لـ Enigma2 (OpenATV 7.6 / 8)
 #  Python 3 only.  يقرأ ملف الأوامر من GitHub ويعرضه بعرض List وبعدة ثيمات.
 #  الصور المدمجة موجودة في الملف assets.py (تُحمَّل عند فتح البانل فقط).
+#  V12: INSTALLED دقيق (لقطة قبل/بعد) + Uninstall، المفضلة، شارة NEW، فرز وتصفية،
+#       حارس الأوامر الخطرة، وقائمة تثبيت متعدد بالتتابع في التيرمنال.
 # ---------------------------------------------------------------------------
 import base64
 import collections
@@ -11,6 +13,7 @@ import glob
 import json
 import os
 import re
+import shlex
 import shutil
 import ssl
 import struct
@@ -30,6 +33,7 @@ from Components.MultiContent import MultiContentEntryPixmapAlphaBlend, MultiCont
 from Components.Pixmap import Pixmap
 from Components.ScrollLabel import ScrollLabel
 from Plugins.Plugin import PluginDescriptor
+from Screens.ChoiceBox import ChoiceBox
 from Screens.MessageBox import MessageBox
 from Screens.Screen import Screen
 from Screens.Standby import TryQuitMainloop
@@ -72,13 +76,15 @@ TITLE = "Major Enigma Panel"
 CREDIT = "By John Kamel"
 # تحديث البانل نفسه (إعادة التثبيت) - ملف installer.sh موجود في جذر المستودع (خارج مجلد MajorPanel)
 INSTALLER_URL = GITHUB_RAW + "/installer.sh"
-PLUGIN_VERSION = "1"                                        # رقم إصدار هذه النسخة (يظهر V11) - غيّره مع كل إصدار
+PLUGIN_VERSION = "12"                                        # رقم إصدار هذه النسخة (يظهر V12) - غيّره مع كل إصدار
 VERSION_URL = GITHUB_RAW + "/Version.txt"                    # ملف الإصدار على GitHub: يحوي رقماً فقط مثل 12
 UPDATE_CMD = 'wget -q --no-check-certificate -O - "%s" | /bin/sh -s norestart' % INSTALLER_URL
 SETTINGS_FILE = "/etc/enigma2/majorpanel_settings.json"      # عرض البانل + الثيم المختار
 RUN_LOG = "/tmp/majorpanel_run.log"                          # سجل تشخيصي لشاشة التنفيذ
 ASSET_DIR = "/tmp/majorpanel"                                # صور مؤقتة صغيرة تُحذف عند إغلاق البانل
 ERROR_LOG = "/tmp/majorpanel_error.log"
+FAV_FILE = "/etc/enigma2/majorpanel_favs.json"               # المفضلة (مفاتيح الأسماء فقط)
+SEEN_FILE = "/etc/enigma2/majorpanel_seen.json"              # أسماء ما رآه المستخدم (لشارة NEW) - ليست نسخة من ملف الأوامر
 DEFAULT_SETTINGS = {"view": "list", "theme": "blue_fire", "anim": False, "mainmenu": True, "splash": True,
                     "autoupdate": True}
 # ============================================================================
@@ -741,6 +747,8 @@ def icon_key(cat_name):
     n = cat_name.lower()
     if n == "all":
         return "all"
+    if n == "favorites":
+        return "star"
     if n.startswith("search:"):
         return "search"
     for word, icon in ICON_RULES:
@@ -753,6 +761,8 @@ def get_icon(cat_name, size=48):
     """Pixmap of a category icon (48 px).
     A file icons/<name>.png next to plugin.py overrides the built-in one."""
     key = icon_key(cat_name)
+    if key == "star":
+        return badge_pix("star_big")
     ck = (key, size)
     if ck not in _icon_cache:
         ptr = None
@@ -912,11 +922,13 @@ def buttons_xml(hint_extra=""):
 
 # --------------------------------- الشاشة الأساسية ---------------------------
 SERVER_OFFLINE_MSG = u"تعذّر الاتصال بسيرفر البانل - تحقق من الإنترنت | Cannot connect to panel server"
+PAGE2_HINT = ("RED : favorite     GREEN : select     YELLOW : filter / sort     BLUE : uninstall     "
+              "0 : back to main keys     OK : install")
 
 # سياقات الأزرار المعتادة فقط. (لا نربط سياقات وضع التلفاز مثل InfobarChannelSelection حتى لا نؤثر
 # على أزرار الاتجاهات بعد الخروج من البانل)
 ACTION_CONTEXTS = ["OkCancelActions", "ColorActions", "DirectionActions", "NavigationActions",
-                   "EPGSelectActions", "MenuActions"]
+                   "EPGSelectActions", "MenuActions", "NumberActions"]
 
 
 class PanelBase(Screen):
@@ -943,6 +955,11 @@ class PanelBase(Screen):
         self.titleIdx = 0
         self.glowIdx = 0
         self.tick = 0
+        self.page = 0               # صفحة الأزرار الملونة: 0 = الأساسية ، 1 = المفضلة / تحديد / فلتر / إزالة
+        self.serverState = "connecting"
+        self.itemByKey = {}
+        self._pending = None
+        self._lastRun = []
 
         for name in ("title", "credit", "h_ver", "h_server", "clock", "date", "b_model", "b_image", "b_py", "b_ip",
                      "b_cpu", "b_ram", "b_hdd"):
@@ -963,15 +980,18 @@ class PanelBase(Screen):
         self.createViewWidgets()
 
         keys = {
-            "ok": self.askInstall, "green": self.askInstall,
-            "cancel": self.exit, "red": self.exit,
-            "yellow": self.search,
-            "blue": self.refresh,                       # تحديث الأوامر
+            "ok": self.askInstall,
+            "cancel": self.exit,
+            "red": self.keyRed, "green": self.keyGreen,     # الصفحة 0: خروج / تثبيت   الصفحة 1: مفضلة / تحديد
+            "yellow": self.keyYellow, "blue": self.keyBlue,  # الصفحة 0: بحث / تحديث    الصفحة 1: فلتر / إزالة
             "menu": self.openSettings,                  # الإعدادات
             "info": self.askUpdate,                     # تحديث البانل نفسه
             "left": self.keyLeft, "right": self.keyRight,
             "up": self.keyUp, "down": self.keyDown,
             "pageUp": self.prevCat, "pageDown": self.nextCat,
+            "1": self.toggleFav, "2": self.cycleFilter,     # اختصارات تعمل في أي صفحة
+            "3": self.toggleMark, "4": self.askUninstall,
+            "0": self.togglePage,
         }
         self["actions"] = ActionMap(ACTION_CONTEXTS, dict((k, safe(v)) for k, v in keys.items()), -1)
 
@@ -979,6 +999,7 @@ class PanelBase(Screen):
         self.tickCount = 0
         self.tickTimer = self.makeTimer(self.onTick)        # مؤقت واحد: الساعة كل 2 ثانية والإحصاءات كل 4
         self.titleTimer = self.makeTimer(self.titleTick)    # للحركة فقط (اختياري)
+        self.flashTimer = self.makeTimer(self.restoreHint)  # رسالة قصيرة في سطر المساعدة
         self.onClose.append(self.releaseAll)
         self.onExecBegin.append(self.resumeTitle)
         self.onExecEnd.append(self.pauseTitle)
@@ -1022,11 +1043,24 @@ class PanelBase(Screen):
     def onCatChanged(self):
         pass
 
+    def selIndex(self):
+        return 0
+
+    def placeIndex(self, idx):
+        pass
+
+    def stepNext(self):
+        pass
+
+    def refreshInstalled(self):
+        pass
+
     # ----------------------------- بدء التشغيل -------------------------------
     def start(self):
         if self.NO_NATIVE:
             noNativeKeys(self)
         reset_installed_cache()
+        self.updateButtons()
         self.loadSegments()
         self.loadTitle()
         self.showBoxInfo()
@@ -1045,7 +1079,7 @@ class PanelBase(Screen):
         """On close: stop and DISCONNECT the timers (so the screen can be freed), unbind the keys
         explicitly (nothing may stay bound after the panel is closed) and free pictures / data."""
         self.closing = True
-        for tm in (self.tickTimer, self.titleTimer):
+        for tm in (self.tickTimer, self.titleTimer, self.flashTimer):
             try:
                 tm.stop()
                 del tm.callback[:]
@@ -1144,13 +1178,14 @@ class PanelBase(Screen):
         label, color = {"online": ("Online", self.t["ok"]),
                         "offline": ("Offline", self.t["bad"]),
                         "connecting": ("Connecting...", self.t["warn"])}[state]
+        self.serverState = state
         self["h_server"].setText("Server:  " + label)
         setColor(self["h_server"], color)
         if state == "offline":
             self["hint"].setText(SERVER_OFFLINE_MSG)
             setColor(self["hint"], self.t["bad"])
         else:
-            self["hint"].setText(self.HINT)
+            self["hint"].setText(self.hintText())
             setColor(self["hint"], self.t["muted"])
 
     def setData(self, text):
@@ -1161,18 +1196,42 @@ class PanelBase(Screen):
             return
         keepCat = self.cats[self.catIdx][0] if self.cats else None
         self.allcats = data
+        self.indexItems()
+        self.noteSeen()
         self.buildView(keepCat)
 
     def categoriesFor(self, keepCat=None):
-        """Applies the search query; fills self.cats (with "All" first) and self.catIdx."""
+        """Applies favorites, the sort / filter mode and the search query; fills self.cats and self.catIdx."""
+        mode = FILTERS[_ui["filter"]][0]
+        check = installed_checker() if mode in ("todo", "done") else None
+
+        def prep(items):
+            if mode == "todo":
+                return [it for it in items if not check(it)]
+            if mode == "done":
+                return [it for it in items if check(it)]
+            if mode == "az":
+                return sorted(items, key=lambda it: it["name"].lower())
+            return list(items)
+
         if self.query:
             q = self.query.lower()
             hits = [it for c, items in self.allcats for it in items
                     if q in (u"%s %s %s %s" % (it["name"], it["author"], it["desc"], c)).lower()]
-            self.cats = [(u"Search: %s" % self.query, hits)]
+            self.cats = [(u"Search: %s" % self.query, prep(hits))]
         else:
             everything = [it for _, items in self.allcats for it in items]
-            self.cats = ([("All", everything)] + list(self.allcats)) if everything else list(self.allcats)
+            favs = load_favs()
+            self.cats = []
+            fav_items = prep([it for it in everything if item_key(it) in favs])
+            if fav_items:
+                self.cats.append((FAV_CAT, fav_items))              # المفضلة أعلى الأقسام
+            if everything:
+                self.cats.append(("All", prep(everything)))
+            for c, items in self.allcats:
+                p = prep(items)
+                if p or mode in ("all", "az"):                      # الفلتر يخفي الأقسام الفارغة
+                    self.cats.append((c, p))
         self.catIdx = 0
         if keepCat:
             for i, (n, _) in enumerate(self.cats):
@@ -1320,31 +1379,237 @@ class PanelBase(Screen):
         it = self.currentItem()
         if not it:
             return
-        self.session.openWithCallback(
-            self.confirmed, MessageBox,
-            u"%s\n\nتنفيذ التثبيت الآن؟\nInstall now?" % it["name"],
-            MessageBox.TYPE_YESNO)
+        ask(self.session, self.confirmed, u"%s\n\nتنفيذ التثبيت الآن؟\nInstall now?" % it["name"])
 
     def confirmed(self, answer):
         it = self.currentItem()
         if answer and it:
-            self.hide()                     # يظهر الفيديو خلف نافذة التيرمنال
-            run_item(self.session, it, VERB_INSTALL, self.afterRun)
+            self.guardRun([it])
+
+    def guardRun(self, items):
+        """Extra confirmation (cursor on No) when a command looks destructive, then runs the items."""
+        bad = []
+        for it in items:
+            found = scan_danger(it.get("cmd", ""))
+            if found:
+                bad.append((it, found))
+        if not bad:
+            self.runNow(items)
+            return
+        ask(self.session, lambda ans: self.runNow(items) if ans else None,
+            danger_text(bad), default=False, warn=True)
+
+    def runNow(self, items):
+        self._lastRun = list(items)
+        self.hide()                         # يظهر الفيديو خلف نافذة التيرمنال
+        run_items(self.session, items, VERB_INSTALL, self.afterRun)
 
     def afterRun(self, *args):
-        if not self.closing:
-            try:
-                self.show()
-            except Exception:
-                pass
-            reset_installed_cache()
-            try:
-                self.refreshInstalled()
-            except Exception as e:
-                dlog_error("refreshInstalled: %s" % e)
+        ran = [item_key(it) for it in self._lastRun]
+        self._lastRun = []
+        if self.closing:
+            return
+        try:
+            self.show()
+        except Exception:
+            pass
+        reset_installed_cache()
+        _ui["queue"][:] = [k for k in _ui["queue"] if k not in ran]
+        try:
+            self.updateButtons()
+            it = self.currentItem()
+            self.rebuild(item_key(it) if it else None, self.selIndex())
+        except Exception as e:
+            dlog_error("afterRun: %s\n%s" % (e, traceback.format_exc()))
 
-    def refreshInstalled(self):
-        pass
+    # ----------------------- الأزرار الملونة (صفحتان) ------------------------
+    def keyRed(self):
+        self.exit() if self.page == 0 else self.toggleFav()
+
+    def keyGreen(self):
+        if self.page == 0:
+            self.askQueue() if _ui["queue"] else self.askInstall()
+        else:
+            self.toggleMark()
+
+    def keyYellow(self):
+        self.search() if self.page == 0 else self.cycleFilter()
+
+    def keyBlue(self):
+        self.refresh() if self.page == 0 else self.askUninstall()
+
+    def togglePage(self):
+        self.page = 1 - self.page
+        self.updateButtons()
+        self.setServer(self.serverState)            # يحدّث سطر المساعدة
+
+    def hintText(self):
+        return PAGE2_HINT if self.page else self.HINT
+
+    def updateButtons(self):
+        n = len(_ui["queue"])
+        if self.page == 0:
+            labels = (u"خروج | Exit",
+                      (u"تثبيت (%d) | Install (%d)" % (n, n)) if n else u"تثبيت | Install",
+                      u"بحث | Search",
+                      u"تحديث الأوامر | Refresh")
+        else:
+            labels = (u"المفضلة | Favorite",
+                      (u"تحديد (%d) | Select" % n) if n else u"تحديد | Select",
+                      (u"فلتر | %s" % FILTERS[_ui["filter"]][1]) if _ui["filter"] else u"فلتر | Filter",
+                      u"إزالة | Uninstall")
+        for name, text in zip(("key_red", "key_green", "key_yellow", "key_blue"), labels):
+            self[name].setText(text)
+
+    def flash(self, text, color=None):
+        """Short message in the hint line (back to the normal hint after a moment)."""
+        if self.closing:
+            return
+        self["hint"].setText(text)
+        setColor(self["hint"], color or self.t["accent"])
+        self.flashTimer.start(2600, True)
+
+    def restoreHint(self):
+        if not self.closing:
+            self.setServer(self.serverState)
+
+    # ----------------------- المفضلة / التحديد / الفلتر ----------------------
+    def curCatName(self):
+        return self.cats[self.catIdx][0] if self.cats else None
+
+    def curItems(self):
+        return self.cats[self.catIdx][1] if self.cats else []
+
+    def filterTag(self):
+        return (u"  ·  %s" % FILTERS[_ui["filter"]][1]) if _ui["filter"] else u""
+
+    def indexItems(self):
+        self.itemByKey = dict((item_key(it), it) for _, items in self.allcats for it in items)
+
+    def noteSeen(self):
+        """NEW badge: items that were not in the list the last time it was loaded."""
+        keys = set(self.itemByKey)
+        if not keys:
+            return
+        try:
+            added = note_seen(keys)
+        except Exception as e:
+            dlog_error("note_seen: %s" % e)
+            return
+        _ui["new"] |= added
+        _ui["new"] &= keys
+
+    def rebuild(self, keepKey=None, keepIdx=0):
+        """Rebuilds the lists (favorites / filter / install state changed) and puts the selection back."""
+        self.buildView(self.curCatName())
+        items = self.curItems()
+        idx = None
+        if keepKey:
+            for i, it in enumerate(items):
+                if item_key(it) == keepKey:
+                    idx = i
+                    break
+        if idx is None:
+            idx = min(max(keepIdx, 0), max(len(items) - 1, 0))
+        if items and idx > 0:
+            self.placeIndex(idx)
+
+    def toggleFav(self):
+        it = self.currentItem()
+        if not it:
+            return
+        on = toggle_fav(it)
+        self.flash(u"Added to Favorites" if on else u"Removed from Favorites")
+        self.rebuild(item_key(it), self.selIndex())
+
+    def cycleFilter(self):
+        it = self.currentItem()
+        _ui["filter"] = (_ui["filter"] + 1) % len(FILTERS)
+        self.updateButtons()
+        self.rebuild(item_key(it) if it else None, self.selIndex())
+        self.flash(u"Filter: %s" % FILTERS[_ui["filter"]][1])
+
+    # ----------------------- التثبيت المتعدد --------------------------------
+    def queueItems(self):
+        keep = [k for k in _ui["queue"] if k in self.itemByKey]
+        _ui["queue"][:] = keep
+        return [self.itemByKey[k] for k in keep]
+
+    def toggleMark(self):
+        it = self.currentItem()
+        if not it:
+            return
+        key = item_key(it)
+        if key in _ui["queue"]:
+            _ui["queue"].remove(key)
+        else:
+            _ui["queue"].append(key)
+        n = len(_ui["queue"])
+        self.updateButtons()
+        self.refreshInstalled()
+        self.stepNext()
+        self.flash(u"Selected for install: %d     (green button on the first page installs them)" % n if n
+                   else u"Selection is empty")
+
+    def askQueue(self):
+        items = self.queueItems()
+        if not items:
+            self.updateButtons()
+            return
+        shown = u"\n".join(u"%d. %s" % (i + 1, it["name"]) for i, it in enumerate(items[:8]))
+        if len(items) > 8:
+            shown += u"\n... +%d" % (len(items) - 8)
+        title = (u"تثبيت %d إضافات بالتتابع؟\nInstall %d selected plugins one after another?\n\n%s"
+                 % (len(items), len(items), shown))
+        self.session.openWithCallback(
+            self.queueChoice, ChoiceBox, title=title,
+            list=[(u"تثبيت المحدد الآن | Install now", "go"),
+                  (u"مسح التحديد | Clear selection", "clear"),
+                  (u"رجوع | Back", "back")])
+
+    def queueChoice(self, choice):
+        if not choice:
+            return
+        if choice[1] == "go":
+            items = self.queueItems()
+            if items:
+                self.guardRun(items)
+        elif choice[1] == "clear":
+            _ui["queue"][:] = []
+            self.updateButtons()
+            self.refreshInstalled()
+            self.flash(u"Selection cleared")
+
+    # ----------------------- الإزالة ----------------------------------------
+    def askUninstall(self):
+        it = self.currentItem()
+        if not it:
+            return
+        info = uninstall_info(it)
+        if not info:
+            self.flash(u"لا يمكن الإزالة: لم تُثبَّت من البانل   |   Cannot uninstall: not installed by this panel",
+                       self.t["bad"])
+            return
+        self._pending = it
+        names = [os.path.basename(d) for d in info["dirs"]] + info["pkgs"]
+        shown = u"\n".join(u"  - %s" % n for n in names[:6])
+        if len(names) > 6:
+            shown += u"\n  ... +%d" % (len(names) - 6)
+        ask(self.session, self.confirmUninstall,
+            u"%s\n\nإزالة هذه الإضافة؟\nUninstall this plugin?\n\n%s" % (it["name"], shown), default=False)
+
+    def confirmUninstall(self, answer):
+        it, self._pending = self._pending, None
+        if not answer or not it:
+            return
+        info = uninstall_info(it)
+        if not info:
+            return
+        item = dict(it)
+        item["cmd"] = build_uninstall_cmd(info)
+        self._lastRun = []
+        self.hide()
+        run_items(self.session, [item], VERB_UNINSTALL, self.afterRun, "uninstall")
 
     # ------------------------- الإعدادات وتحديث البانل -----------------------
     def openSettings(self):
@@ -1372,9 +1637,21 @@ class PanelBase(Screen):
         self.close()
 
 
-INSTALLED_FILE = "/etc/enigma2/majorpanel_installed.json"     # ما نُفّذ بنجاح من البانل
-_installed = {"keys": None, "sys": None}
+# --------------------------------- ما ثُبّت فعلاً / المفضلة / NEW ---------------------
+# ملفات الحالة (كلها في /etc/enigma2). لا يُخزَّن أي نص أوامر هنا: فقط مفاتيح الأسماء ومسارات ما ثُبّت.
+INSTALLED_FILE = "/etc/enigma2/majorpanel_installed.json"     # ما ثبّتته البانل فعلاً (مجلدات وحزم)
+PLUGIN_BASES = ("/usr/lib/enigma2/python/Plugins/Extensions",
+                "/usr/lib/enigma2/python/Plugins/SystemPlugins")
+OPKG_STATUS_FILES = ("/var/lib/opkg/status", "/usr/lib/opkg/status")
+PLUGIN_PKG_PREFIX = "enigma2-plugin-"
 ACTION_WORDS = ("update", "remove", "uninstall", "delete", "clean", "fix", "restore", "backup", "reset", "restart", "install")
+FAV_CAT = "Favorites"
+FILTERS = (("all", u"All"), ("az", u"Sort A-Z"), ("todo", u"Not installed"), ("done", u"Installed"))
+_PKG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9+._-]*$")
+_STATUS_RE = re.compile(r"\binstall\b.*\binstalled\b")
+_PKG_PREFIX_RE = re.compile(r"^enigma2-plugin-(extensions|systemplugins|softcams|skins|picons|settings|drivers|channel-settings)?-?")
+_installed = {"data": None, "sys": None}
+_ui = {"filter": 0, "queue": [], "new": set()}        # حالة الواجهة: تبقى عند إعادة فتح البانل وتُمسح عند الخروج
 
 
 def _norm(text):
@@ -1385,87 +1662,446 @@ def item_key(it):
     return "%s|%s" % (_norm(it.get("cat")), _norm(it.get("name")))
 
 
-def load_installed():
-    if _installed["keys"] is None:
-        try:
-            with open(INSTALLED_FILE, "r", encoding="utf-8") as f:
-                _installed["keys"] = set(json.load(f).get("keys", []))
-        except Exception:
-            _installed["keys"] = set()
-    return _installed["keys"]
-
-
-def mark_installed(it):
-    """Remembers an item whose command finished with exit code 0 (the update item of the panel itself is ignored)."""
-    if not it or not it.get("cat"):
-        return
-    keys = load_installed()
-    keys.add(item_key(it))
+def _read_json(path, default=None):
     try:
-        with open(INSTALLED_FILE, "w", encoding="utf-8") as f:
-            json.dump({"keys": sorted(keys)}, f)
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return default
+
+
+def _write_json(path, data):
+    """Atomic write (temp file + rename): a power cut can never leave a half-written file."""
+    tmp = path + ".tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        os.replace(tmp, path)
+        return True
     except Exception as e:
-        dlog_error("mark_installed: %s" % e)
-
-
-def system_names():
-    """Normalized names of plugin folders and installed opkg packages (cached until the panel is reopened / a run ends)."""
-    if _installed["sys"] is None:
-        names = set()
-        base = "/usr/lib/enigma2/python/Plugins"
-        for sub in ("Extensions", "SystemPlugins"):
-            try:
-                for d in os.listdir(os.path.join(base, sub)):
-                    n = _norm(d)
-                    if len(n) >= 3:
-                        names.add(n)
-            except Exception:
-                pass
+        dlog_error("write %s: %s" % (path, e))
         try:
-            with open("/var/lib/opkg/status", "r", encoding="utf-8", errors="ignore") as f:
-                for block in f.read().split("\n\n"):
-                    if "install ok installed" not in block:
-                        continue
-                    for line in block.split("\n"):
-                        if line.startswith("Package:"):
-                            raw = re.sub(r"^enigma2-plugin-(extensions|systemplugins|softcams|skins|picons|settings|drivers|channel-settings)?-?",
-                                         "", line.split(":", 1)[1].strip().lower())
-                            n = _norm(raw)
-                            if len(n) >= 3:
-                                names.add(n)
-                            break
-        except Exception:
+            os.remove(tmp)
+        except OSError:
             pass
-        _installed["sys"] = names
+        return False
+
+
+# ---- أيقونات صغيرة مدمجة (PNG): نجمة المفضلة + علامة الاختيار + نجمة القسم ----
+BADGES = {
+    "star_big": "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",
+    "star_small": "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAE9ElEQVR42rWXT2hd1RbGf2vvfZJ7I4lVTB10ID4dCA60Ji1NTbm9gpiJ2sHzHyhFhDd7OHk8O5HbzFScCI4c6FCwIjhRxEESm6Zq//BGD0RUFBW1/kFpk3tzzt6fg3PuzQ29TXJbei4Hzj2s8621v7XW/taGq7gkDEArB/bo7ME7+t8Ne7mr+YjjrdKZhXdJblErB+rXEsRwq3/nMQ+gT2endP6Q9P/D0ucHHxGYFhrh+jMw+Uu1ep5mxEGRRLRnDMSF3RoWzobNvRnSdwfq/Bi+JLM9JInERUbjnXbv6V+6NteHgcWGFxg/hocYD3vIUyQpMhHG6YRHBMZiw1+/FFzYLQNhOlqVnAAjCkhPGYjDh9N1SYFaOJsnaeXAHkL4EqiT2Kh7R8TSXTa98pWEMyNdEwMCE5hU3jw85SWM4P/JRKgjFRhWLkKR8RAo3BMC41xpK1UYWyzU9QxbOKnlpJarqJGBzKp7+lxuhkj2DOsJsA1QmaOTAD1pbNiaVRiURdnFL32Vfm3bij87lTG2a4LfOoma7sG5BXKpWn0/ZWLEGUV6kA7nqHsPF/+06XP5Vp1hOtu4haJ4n8w65EqV6a0YoSqxDLipfFYds9oVmkw4jKQOslUcIP5A5BggCoyfkURmjlyjhPBowFNQ2Dq31pr8npfZSqLnRECssphs43lQQUfA2SjBRhHg7aaerQHO7kbAzRl8317EU/SgdPbQS4y4F2jHSCJh+IoB6N/jbZvOUR8/Vv0rMSIOR8171tPLNn3y2EYRtnA2ffIYq8VRMrdOzWVICcMBDuv7bd/Y/bYOwyElai4jc+usFkdt+uSxbiFat+VYaHhrLhU6NbOPenibmr+Dv/ICs3Bt6qWCiSzQjl+xVjxl958+o4VGoLkUDbTRcs2lQguNYPefPsNPmmEtfsiukQCK6GocAyiyaySwFj/kJ810nVtzqei2pg2SW3v8RFlqZ2Zfoe7/w2oUaQf5768DB4x5Yy2+yr7l/xqoi73tVqwWjuNgRtLns88S7A1yuSG0I5FZotC/bP/yW1KFN3/59jwQ0OZJnMCkliPmC0RZr5Z3Rr4RZcR8QWo5TmCDnG+thpMNw+aFhSOMBw+KOxSvrjZ4LBzB5sVkw4aX4570WpOozXtBf641gBVVEm3W3G5Ssi114H8P3sDa6jeMuMnL9n8pEpzHgDxFzPymwDIz1tMF6mO3270fX7qSHgxm4MRj5ftOe4q6nyRPqedcCCkykXmi/qBIF7gx80ixx4Zh5ClR95N02lObMHcUQHfwlJrUHHSHCynizbgx83TSRxjTxLiXdnqficwTzJBiFUSi5kqMfswdBbDYHav0AEVPlQrGgyfwFxfjv23vJ3O2f/lrO/jpD7b3kyNczJ/D8ysTFRtA+a0e2Iy5TQ1s5H9mN23/NY4a4BkPsFZ8xGp63mZXvuj2NscRtMxsPunUzG3U/GvUw6NcimXQkQ61+I8rTcwDGKhy1Q4zjLk6Ne/JrFz1fctzNrvyhRYawYxk86Ry8plP1Tb+rU0tl2wEfqXmA2O+TjvMbMLeMoDFbq40x+SoI08fcCnut30nX5dwauGsuVRcRmVzqeiOdbb/1JusFtN04ntMjjjQ3GbsrQ8fDkCfzc7p/KEXe++HOHb12+r8oRf12excP/bQJ2G1hv+wq/fXIOMtdzWHzUFsdCftQdffEA6R8f6qf9UAAAAASUVORK5CYII=",
+    "check_small": "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",
+}
+
+
+def badge_pix(name):
+    ck = ("badge", name)
+    if ck not in _icon_cache:
+        ptr = None
+        try:
+            os.makedirs(ASSET_DIR, exist_ok=True)
+            p = os.path.join(ASSET_DIR, "bd_%s.png" % name)
+            if not os.path.isfile(p):
+                with open(p, "wb") as f:
+                    f.write(base64.b64decode(BADGES[name]))
+            ptr = LoadPixmap(p)
+        except Exception as e:
+            dlog_error("badge %s: %s" % (name, e))
+        _icon_cache[ck] = ptr
+    return _icon_cache[ck]
+
+
+# ---- المفضلة ----
+_favs = {"keys": None}
+
+
+def load_favs():
+    if _favs["keys"] is None:
+        raw = _read_json(FAV_FILE, {})
+        keys = raw.get("keys", []) if isinstance(raw, dict) else []
+        _favs["keys"] = set(k for k in keys if isinstance(k, str))
+    return _favs["keys"]
+
+
+def toggle_fav(it):
+    """Adds / removes the item from the favorites file. Returns True when it is now a favorite."""
+    keys = load_favs()
+    key = item_key(it)
+    if key in keys:
+        keys.discard(key)
+        on = False
+    else:
+        keys.add(key)
+        on = True
+    _write_json(FAV_FILE, {"keys": sorted(keys)})
+    return on
+
+
+# ---- شارة NEW ----
+def note_seen(keys):
+    """keys = every item key of the list just loaded. Returns the keys that were not in the list the last time
+    the panel loaded it (nothing on the very first run: it only builds the baseline). Only item NAMES are stored,
+    never the commands file - the commands are still read from GitHub only."""
+    keys = set(keys)
+    raw = _read_json(SEEN_FILE, None)
+    old = None
+    if isinstance(raw, dict) and isinstance(raw.get("keys"), list):
+        old = set(k for k in raw["keys"] if isinstance(k, str))
+    added = (keys - old) if old is not None else set()
+    if old != keys:
+        _write_json(SEEN_FILE, {"keys": sorted(keys)})
+    return added
+
+
+# ---- ما ثُبّت فعلاً: لقطة قبل/بعد لمجلدات الإضافات والحزم ----
+def safe_plugin_dir(path):
+    """A plugin folder we are allowed to record / delete: a direct child of Extensions or SystemPlugins."""
+    return (isinstance(path, str) and os.path.dirname(path) in PLUGIN_BASES
+            and os.path.basename(path) not in ("", ".", ".."))
+
+
+def read_dirs():
+    found = set()
+    for base in PLUGIN_BASES:
+        try:
+            with os.scandir(base) as entries:
+                for e in entries:
+                    if not e.name.startswith(".") and e.is_dir():
+                        found.add(os.path.join(base, e.name))
+        except OSError:
+            pass
+    return found
+
+
+def read_packages():
+    """Names of the installed opkg packages (streams the status file line by line - light on RAM)."""
+    names = set()
+    path = next((p for p in OPKG_STATUS_FILES if os.path.isfile(p)), None)
+    if not path:
+        return names
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            pkg = None
+            for line in f:
+                if line.startswith("Package:"):
+                    pkg = line[8:].strip()
+                elif line.startswith("Status:"):
+                    if pkg and _STATUS_RE.search(line):
+                        names.add(pkg)
+                    pkg = None
+    except Exception as e:
+        dlog_error("read_packages: %s" % e)
+    return names
+
+
+def snapshot_system():
+    return read_dirs(), read_packages()
+
+
+def names_of(dirs, pkgs):
+    names = set()
+    for d in dirs:
+        n = _norm(os.path.basename(d))
+        if len(n) >= 3:
+            names.add(n)
+    for p in pkgs:
+        n = _norm(_PKG_PREFIX_RE.sub("", p.lower()))
+        if len(n) >= 3:
+            names.add(n)
+    return names
+
+
+def name_match(it, names):
+    """Old name heuristic - used ONLY for soft records (older panel versions, or 'success but nothing new')."""
+    n = _norm(it.get("name"))
+    if len(n) < 3:
+        return False
+    if n in names:
+        return True
+    if n.startswith(ACTION_WORDS):          # "Update X" / "Remove X" are actions, not the plugin itself
+        return False
+    for x in names:
+        short, long_ = (n, x) if len(n) <= len(x) else (x, n)
+        if len(short) >= 6 and short in long_ and len(short) >= 0.75 * len(long_):
+            return True
+    return False
+
+
+def load_installed():
+    """{"keys": soft records (set), "items": {key: {"dirs": [...], "pkgs": [...], "ts": n}}} - cached."""
+    if _installed["data"] is None:
+        raw = _read_json(INSTALLED_FILE, {})
+        raw = raw if isinstance(raw, dict) else {}
+        keys = set(k for k in raw.get("keys", []) if isinstance(k, str))
+        items = {}
+        src = raw.get("items")
+        for k, rec in (src.items() if isinstance(src, dict) else []):
+            if not isinstance(rec, dict):
+                continue
+            dirs = [d for d in rec.get("dirs", []) if safe_plugin_dir(d)]
+            pkgs = [p for p in rec.get("pkgs", []) if isinstance(p, str) and _PKG_RE.match(p)]
+            items[k] = {"dirs": dirs, "pkgs": pkgs, "ts": int(rec.get("ts", 0) or 0)}
+        _installed["data"] = {"keys": keys, "items": items}
+    return _installed["data"]
+
+
+def save_installed():
+    d = load_installed()
+    _write_json(INSTALLED_FILE, {"keys": sorted(d["keys"]), "items": d["items"]})
+
+
+def system_state():
+    """(folders, packages, normalized names) of the box - cached until the panel is reopened / a run ends."""
+    if _installed["sys"] is None:
+        dirs, pkgs = snapshot_system()
+        _installed["sys"] = (dirs, pkgs, names_of(dirs, pkgs))
     return _installed["sys"]
 
 
 def reset_installed_cache():
-    _installed["keys"] = None
+    _installed["data"] = None
     _installed["sys"] = None
 
 
+def removable_pkgs(rec):
+    """Packages that belong to the plugin itself (enigma2-plugin-*). Libraries pulled in as dependencies are
+    left alone; a record with no plugin package and no folder falls back to all of its packages."""
+    plug = [p for p in rec["pkgs"] if p.startswith(PLUGIN_PKG_PREFIX)]
+    if plug:
+        return plug
+    return [] if rec["dirs"] else list(rec["pkgs"])
+
+
+def record_alive(rec, dirs, pkgs):
+    return any(d in dirs for d in rec["dirs"]) or any(p in pkgs for p in removable_pkgs(rec))
+
+
 def installed_checker():
-    """Returns check(item) -> True if the item was installed by this panel or a plugin with a matching name is on the box."""
-    keys = load_installed()
-    names = system_names()
+    """check(item) -> True when the item is really on the box: a folder / package recorded by the panel still exists
+    (or, for soft records only, the old name match still holds)."""
+    db = load_installed()
+    dirs, pkgs, names = system_state()
 
     def check(it):
-        if item_key(it) in keys:
-            return True
-        n = _norm(it.get("name"))
-        if len(n) < 3:
-            return False
-        if n in names:
-            return True
-        if n.startswith(ACTION_WORDS):          # "Update X" / "Remove X" are actions, not the plugin itself
-            return False
-        for x in names:
-            short, long_ = (n, x) if len(n) <= len(x) else (x, n)
-            if len(short) >= 6 and short in long_ and len(short) >= 0.75 * len(long_):
-                return True
-        return False
+        key = item_key(it)
+        rec = db["items"].get(key)
+        if rec is not None:
+            return record_alive(rec, dirs, pkgs)
+        return key in db["keys"] and name_match(it, names)
     return check
+
+
+def record_install(it, before, after, rc):
+    """Compares the box before / after an install. Returns (kind, new folders, new packages):
+    'new' = something new appeared (recorded, Uninstall becomes possible); 'soft' = exit code 0, nothing new,
+    but a plugin with that name is on the box (e.g. a re-install); None = nothing to record."""
+    key = item_key(it)
+    new_dirs = sorted(d for d in after[0] - before[0] if safe_plugin_dir(d))
+    new_pkgs = sorted(p for p in after[1] - before[1] if _PKG_RE.match(p))
+    db = load_installed()
+    if new_dirs or new_pkgs:
+        old = db["items"].get(key) or {"dirs": [], "pkgs": []}
+        dirs = sorted(set(d for d in old["dirs"] if d in after[0]) | set(new_dirs))
+        pkgs = sorted(set(p for p in old["pkgs"] if p in after[1]) | set(new_pkgs))
+        db["items"][key] = {"dirs": dirs, "pkgs": pkgs, "ts": int(time.time())}
+        db["keys"].discard(key)
+        save_installed()
+        return "new", new_dirs, new_pkgs
+    if rc == 0:
+        if key in db["items"]:
+            return "soft", [], []
+        if key in db["keys"] or name_match(it, names_of(after[0], after[1])):
+            if key not in db["keys"]:
+                db["keys"].add(key)
+                save_installed()
+            return "soft", [], []
+    return None, [], []
+
+
+def uninstall_info(it):
+    """What the panel may remove for this item: {"dirs": [...], "pkgs": [...]} or None (not installed by the panel)."""
+    rec = load_installed()["items"].get(item_key(it))
+    if not rec:
+        return None
+    dirs, pkgs, _ = system_state()
+    d = [x for x in rec["dirs"] if x in dirs and safe_plugin_dir(x)]
+    p = [x for x in removable_pkgs(rec) if x in pkgs and _PKG_RE.match(x)]
+    return {"dirs": d, "pkgs": p} if (d or p) else None
+
+
+def build_uninstall_cmd(info):
+    """Shell script that removes the recorded packages (opkg refuses if another package needs them) and folders."""
+    out = []
+    for p in info["pkgs"]:
+        q = shlex.quote(p)
+        out.append("printf '\\033[1;36m> Removing package %s\\033[0m\\n' " + q)
+        out.append("opkg remove " + q + " 2>&1")
+    for d in info["dirs"]:
+        q = shlex.quote(d)
+        out.append("if [ -d %s ]; then printf '\\033[1;36m> Removing folder %s\\033[0m\\n' %s; rm -rf %s; fi"
+                   % (q, "%s", shlex.quote(os.path.basename(d)), q))
+    out.append("sync")
+    return "\n".join(out)
+
+
+def finish_uninstall(it, after):
+    """After an uninstall run: True when everything recorded is gone (the record is dropped), else keeps what is left."""
+    db = load_installed()
+    key = item_key(it)
+    rec = db["items"].get(key)
+    if not rec:
+        return True
+    left_d = [d for d in rec["dirs"] if d in after[0]]
+    left_p = [p for p in removable_pkgs(rec) if p in after[1]]
+    if not left_d and not left_p:
+        db["items"].pop(key, None)
+        db["keys"].discard(key)
+        save_installed()
+        return True
+    rec["dirs"] = left_d
+    rec["pkgs"] = [p for p in rec["pkgs"] if p in after[1]]
+    save_installed()
+    return False
+
+
+# ---- حارس الأوامر الخطرة ----
+SAFE_RM_PREFIXES = ("/tmp/", "/var/volatile/", "/var/tmp/")
+SAFE_CWDS = ("/tmp", "/var/volatile", "/var/volatile/tmp", "/var/tmp")
+_SEG_SPLIT_RE = re.compile(r"\|\||&&|[;|&\n]")
+_WRAPPERS = ("sudo", "busybox", "nohup", "command", "exec", "time", "nice", "env")
+_B = r"(?:^|[\s;&|(/])"
+_E = r"(?=[\s;&|)]|$)"
+DANGER_REGEX = (
+    (2, "mkfs", re.compile(_B + r"(?:mkfs(?:\.\w+)?|mke2fs|mkdosfs|mkntfs)" + _E),
+     u"تهيئة قرص | formats a disk"),
+    (2, "fdisk / parted / wipefs", re.compile(_B + r"(?:fdisk|sfdisk|cfdisk|gdisk|sgdisk|parted|wipefs|shred)" + _E),
+     u"تعديل أو مسح الأقراص | partition / wipe tools"),
+    (2, "> /dev/sdX", re.compile(r">\s*/dev/(?:sd|hd|mmcblk|mtd|ubi|nand)"),
+     u"كتابة مباشرة على قرص | raw write to a device"),
+    (2, "flash tools", re.compile(_B + r"(?:flash_erase(?:all)?|flashcp|nandwrite|ubiformat|ubirmvol|ubirsvol|ubimkvol|ubidetach)" + _E),
+     u"مسح أو كتابة الفلاش | flash erase / write"),
+    (2, "fork bomb", re.compile(r":\s*\(\s*\)\s*\{"),
+     u"قنبلة عمليات | fork bomb"),
+    (2, "chmod / chown -R /", re.compile(_B + r"(?:chmod|chown)\s+(?:-\w+\s+)*-\w*R\w*\s+(?:\S+\s+)?/(?:\s|\*|$)"),
+     u"تغيير صلاحيات النظام كله | recursive chmod / chown on /"),
+    (1, "--force-depends", re.compile(r"--force-(?:depends|removal-of-dependent-packages)"),
+     u"إزالة حزم بالقوة | forced package removal"),
+)
+DD_RE = re.compile(_B + r"dd\s+(?:\w+=\S*\s*)+")
+
+
+def _tokens(seg):
+    try:
+        return shlex.split(seg, posix=True)
+    except ValueError:
+        return seg.split()
+
+
+def _norm_path(p):
+    p = re.sub(r"/+", "/", p.strip())
+    return p.rstrip("/") if len(p) > 1 else p
+
+
+def _rm_risk(tokens, cwd_safe):
+    """0 = harmless, 1 = recursive delete (caution), 2 = recursive delete of a system path / everything (critical)."""
+    i = 0
+    while i < len(tokens) and (re.match(r"^[A-Za-z_]\w*=", tokens[i]) or tokens[i] in _WRAPPERS):
+        i += 1
+    if i >= len(tokens) or os.path.basename(tokens[i]) != "rm":
+        return 0
+    recursive, targets, endopts = False, [], False
+    for a in tokens[i + 1:]:
+        if not endopts and a == "--":
+            endopts = True
+        elif not endopts and a.startswith("--"):
+            recursive = recursive or a == "--recursive"
+        elif not endopts and a.startswith("-") and len(a) > 1:
+            recursive = recursive or ("r" in a[1:] or "R" in a[1:])
+        else:
+            targets.append(a)
+    if not recursive:
+        return 0
+    worst = 0
+    for t in targets:
+        p = _norm_path(t)
+        base = re.sub(r"(?:/\*+|/\.\*)$", "", p)
+        if p in ("", "/", "/*", "~", "~/*", "$HOME", "$HOME/*", "${HOME}", "${HOME}/*", ".", "..", "/."):
+            worst = 2
+        elif (p.startswith("/") and ".." not in p and len([c for c in base.split("/") if c]) <= 2
+              and not (base + "/").startswith(SAFE_RM_PREFIXES) and base not in SAFE_CWDS):
+            worst = 2                                          # /etc  /usr/lib  /media/hdd  /etc/enigma2 ...
+        elif p.startswith(SAFE_RM_PREFIXES) and ".." not in p and "$" not in p:
+            continue                                           # مجلد مؤقت: لا مشكلة
+        elif not p.startswith(("/", "~", "$")) and cwd_safe and ".." not in p:
+            continue                                           # ملف نسبي بعد cd /tmp
+        else:
+            worst = max(worst, 1)
+    return worst
+
+
+def scan_danger(cmd):
+    """Looks for destructive patterns in a command. Returns [(level, label, text)], most serious first
+    (level 2 = critical, 1 = caution). An empty list means nothing suspicious was found."""
+    found = {}
+
+    def add(level, label, text):
+        if label not in found or found[label][0] < level:
+            found[label] = (level, label, text)
+    cmd = cmd or ""
+    for level, label, rx, text in DANGER_REGEX:
+        if rx.search(cmd):
+            add(level, label, text)
+    m = DD_RE.search(cmd)
+    if m:
+        add(2 if "of=/dev/" in m.group(0) else 1, "dd", u"كتابة خام بالأمر dd | raw write with dd")
+    cwd_safe = False
+    for seg in _SEG_SPLIT_RE.split(cmd):
+        toks = _tokens(seg)
+        if not toks:
+            continue
+        if toks[0] == "cd" and len(toks) > 1:
+            where = _norm_path(toks[1])
+            cwd_safe = where in SAFE_CWDS or (where + "/").startswith(SAFE_RM_PREFIXES)
+            continue
+        lvl = _rm_risk(toks, cwd_safe)
+        if lvl:
+            add(lvl, "rm -rf", u"حذف متكرر للملفات | recursive delete")
+    return sorted(found.values(), key=lambda x: -x[0])
+
+
+def danger_text(bad):
+    """Warning text for the extra confirmation. bad = [(item, findings)]. Shows the pattern names only - never the command."""
+    lines = [u"تحذير! فيها عمليات خطرة قد تتلف بياناتك أو تعطّل الجهاز", u"WARNING: potentially destructive operations", u""]
+    for it, found in bad[:6]:
+        if len(bad) > 1:
+            lines.append(it.get("name", ""))
+        for level, label, text in found:
+            lines.append(u"  - %s : %s%s" % (label, text, u"   (CRITICAL)" if level >= 2 else u""))
+    if len(bad) > 6:
+        lines.append(u"... +%d" % (len(bad) - 6))
+    lines += [u"", u"هل تريد المتابعة رغم ذلك؟", u"Continue anyway?"]
+    return u"\n".join(lines)
+
+
+def ask(session, callback, text, default=True, warn=False):
+    """Yes / No box. default=False puts the cursor on No; warn=True uses the warning icon."""
+    kw = {}
+    if not default:
+        kw["default"] = False
+    if warn:
+        kw["picon"] = MessageBox.TYPE_WARNING
+    try:
+        session.openWithCallback(callback, MessageBox, text, MessageBox.TYPE_YESNO, **kw)
+    except TypeError:
+        session.openWithCallback(callback, MessageBox, text, MessageBox.TYPE_YESNO)
+
+
+def reset_ui():
+    """Called when the panel is really closed (not when it only reopens after a settings change)."""
+    _ui["filter"] = 0
+    _ui["queue"][:] = []
+    _ui["new"].clear()
 
 
 def fetch_remote_version(holder):
@@ -1489,8 +2125,8 @@ def update_item():
 
 # --------------------------------- عرض القائمة (List) -------------------------
 class ListPanel(PanelBase):
-    HINT = ("LEFT / RIGHT : category     UP / DOWN : select     OK : install     "
-            "BLUE : refresh     MENU : settings     INFO : update panel")
+    HINT = ("LEFT/RIGHT : section   UP/DOWN : select   OK : install   1 : fav   2 : filter   3 : select   "
+            "4 : uninstall   0 : more   BLUE : refresh   MENU : settings   INFO : update")
 
     def buildSkin(self):
         c = tc()
@@ -1557,24 +2193,47 @@ class ListPanel(PanelBase):
         self["cats"].moveToIndex(self.catIdx)
         self.fillItems()
 
-    def fillItems(self):
+    def fillItems(self, index=0):
         t = self.t
         txt, sec = hexint(t["text"]), hexint(t["second"])
         acc = hexint(ring_hex(t))
-        items = self.cats[self.catIdx][1] if self.cats else []
+        warn, okc = hexint(t["warn"]), hexint(t["ok"])
+        items = self.curItems()
         check = installed_checker()
+        favs = load_favs()
+        qpos = dict((k, i + 1) for i, k in enumerate(_ui["queue"]))
+        newk = _ui["new"]
         pill = pix("pill")
+        star = badge_pix("star_small")
+        tick = badge_pix("check_small")
         rows = []
         for it in items:
             done = check(it)
+            key = item_key(it)
+            isfav = key in favs and star is not None
+            isq = key in qpos and tick is not None
+            isnew = key in newk
             row = [it,
-                   MultiContentEntryText(pos=(s(24), s(8)), size=(s(540), s(46)), font=0,
+                   MultiContentEntryText(pos=(s(24), s(8)), size=(s(470 if (isfav or isq) else 540), s(46)), font=0,
                                          flags=RT_HALIGN_LEFT | RT_VALIGN_CENTER, text=it["name"],
                                          color=txt, color_sel=0xFFFFFF),
-                   MultiContentEntryText(pos=(s(24), s(56)), size=(s(540), s(36)), font=1,
+                   MultiContentEntryText(pos=(s(24), s(56)), size=(s(330 if (isnew or isq) else 540), s(36)), font=1,
                                          flags=RT_HALIGN_LEFT | RT_VALIGN_CENTER,
                                          text=it["author"] or it["cat"],
                                          color=sec, color_sel=0xDDEEFF)]
+            if isfav:                                           # نجمة المفضلة
+                row.append(MultiContentEntryPixmapAlphaBlend(pos=(s(498), s(14)), size=(s(30), s(30)),
+                                                             png=star, flags=BT_SCALE))
+            if isq:                                             # محدد للتثبيت المتعدد + رقمه
+                row.append(MultiContentEntryPixmapAlphaBlend(pos=(s(532), s(14)), size=(s(30), s(30)),
+                                                             png=tick, flags=BT_SCALE))
+                row.append(MultiContentEntryText(pos=(s(360), s(56)), size=(s(96), s(36)), font=2,
+                                                 flags=RT_HALIGN_RIGHT | RT_VALIGN_CENTER,
+                                                 text=u"#%d" % qpos[key], color=okc, color_sel=okc))
+            if isnew:                                           # شارة NEW
+                row.append(MultiContentEntryText(pos=(s(462), s(56)), size=(s(100), s(36)), font=2,
+                                                 flags=RT_HALIGN_RIGHT | RT_VALIGN_CENTER,
+                                                 text=u"NEW", color=warn, color_sel=warn))
             if pill:
                 row.append(MultiContentEntryPixmapAlphaBlend(pos=(s(574), s(28)), size=(s(180), s(44)),
                                                              png=pill, flags=BT_SCALE))
@@ -1585,16 +2244,25 @@ class ListPanel(PanelBase):
             rows.append(row)
         self["items"].setList(rows)
         if rows:
-            self["items"].moveToIndex(0)
+            self["items"].moveToIndex(min(max(index, 0), len(rows) - 1))
         self.updateDetails()
 
     def refreshInstalled(self):
-        """After a run: redraw the rows (badges) and keep the selected row."""
-        idx = self["items"].getSelectionIndex() if self["items"].list else 0
-        self.fillItems()
+        """Redraw the rows (badges / marks) and keep the selected row."""
+        self.fillItems(self.selIndex())
+
+    def selIndex(self):
+        return self["items"].getSelectionIndex() if self["items"].list else 0
+
+    def placeIndex(self, idx):
         if self["items"].list:
-            self["items"].moveToIndex(min(idx, len(self["items"].list) - 1))
+            self["items"].moveToIndex(min(max(idx, 0), len(self["items"].list) - 1))
             self.updateDetails()
+
+    def stepNext(self):
+        lst = self["items"]
+        if lst.list and lst.getSelectionIndex() < len(lst.list) - 1:
+            self.keyDown()
 
     def currentItem(self):
         cur = self["items"].getCurrent()
@@ -1605,10 +2273,12 @@ class ListPanel(PanelBase):
         if not it:
             for k in ("d_cat", "d_count", "d_name", "d_author"):
                 self[k].setText("")
-            self["d_desc"].setText(u"لا توجد نتائج | No results" if self.query else "")
+            if _ui["filter"]:
+                self["d_cat"].setText(FILTERS[_ui["filter"]][1])
+            self["d_desc"].setText(u"لا توجد نتائج | No results" if (self.query or _ui["filter"]) else "")
             return
         total = len(self.cats[self.catIdx][1])
-        self["d_cat"].setText(it["cat"])
+        self["d_cat"].setText(it["cat"] + self.filterTag())
         self["d_count"].setText("%d / %d" % (self["items"].getSelectionIndex() + 1, total))
         self["d_name"].setText(it["name"])
         self["d_author"].setText((u"by " + it["author"]) if it["author"] else "")
@@ -1659,8 +2329,8 @@ class GridPanel(PanelBase):
     so the screen has only a handful of widgets."""
     DEV = device_layout(125, 110)
     PIC = (1340, DEV["pic"][0], 510, 110)
-    HINT = ("ARROWS : move     UP / DOWN at the edge (or PAGE keys) : sections     OK : install     "
-            "BLUE : refresh     MENU : settings")
+    HINT = ("ARROWS : move   UP/DOWN at the edge : section   OK : install   1 : fav   2 : filter   3 : select   "
+            "4 : uninstall   0 : more   BLUE : refresh   MENU : settings")
 
     def buildSkin(self):
         c = tc()
@@ -1669,6 +2339,7 @@ class GridPanel(PanelBase):
             header_xml(),
             # --- منطقة العنوان والتفاصيل ---
             wid("g_cap", (40, 135, 700, 34), font=24, fg=c["acc"], bg=c["bg"]),
+            wid("g_tags", (740, 135, 260, 34), font=22, fg=c["warn"], bg=c["bg"], halign="right"),
             wid("g_sec", (40, 170, 960, 76), font=56, fg="#FFFFFF", bg=c["bg"], valign="center"),
             wid("g_name", (40, 252, 960, 46), font=36, fg=c["text"], bg=c["bg"], valign="center"),
             wid("g_author", (40, 298, 960, 34), font=26, fg=c["second"], bg=c["bg"]),
@@ -1718,7 +2389,7 @@ class GridPanel(PanelBase):
         return out
 
     def createViewWidgets(self):
-        for n in ("g_cap", "g_sec", "g_name", "g_author", "g_desc", "g_page"):
+        for n in ("g_cap", "g_tags", "g_sec", "g_name", "g_author", "g_desc", "g_page"):
             self[n] = Label("")
         for i in range(4):
             self["st%d_v" % i] = Label("")
@@ -1804,6 +2475,8 @@ class GridPanel(PanelBase):
         start = self.pageStart()
         cat = self.cats[self.catIdx][0] if self.cats else ""
         icon = get_icon(cat, 64) if cat else None
+        favs = load_favs()
+        qpos = dict((k, i + 1) for i, k in enumerate(_ui["queue"]))
         for i in range(GRID_PER):
             idx = start + i
             on = idx < n
@@ -1811,7 +2484,14 @@ class GridPanel(PanelBase):
             setVisible(self["tt%d" % i], on)
             setVisible(self["ti%d" % i], bool(on and icon))
             if on:
-                self["tt%d" % i].setText(items[idx]["name"])
+                key = item_key(items[idx])
+                label, color = items[idx]["name"], self.t["text"]
+                if key in qpos:                                 # محدد للتثبيت: رقمه + أخضر
+                    label, color = u"[%d] %s" % (qpos[key], label), self.t["ok"]
+                elif key in favs:                               # مفضلة: ذهبي
+                    color = self.t["warn"]
+                self["tt%d" % i].setText(label)
+                setColor(self["tt%d" % i], color)
                 if icon:
                     try:
                         if self["ti%d" % i].instance:
@@ -1850,7 +2530,8 @@ class GridPanel(PanelBase):
         items = self.items()
         n = len(items)
         cat = self.cats[self.catIdx][0] if self.cats else ""
-        self["g_cap"].setText("SECTION %02d / %02d" % (self.catIdx + 1, len(self.cats)) if self.cats else "")
+        self["g_cap"].setText(("SECTION %02d / %02d%s" % (self.catIdx + 1, len(self.cats), self.filterTag().upper()))
+                              if self.cats else "")
         self["g_sec"].setText(cat.upper())
         it = self.currentItem()
         if it:
@@ -1860,7 +2541,17 @@ class GridPanel(PanelBase):
         else:
             self["g_name"].setText("")
             self["g_author"].setText("")
-            self["g_desc"].setText(u"لا توجد نتائج | No results" if self.query else "")
+            self["g_desc"].setText(u"لا توجد نتائج | No results" if (self.query or _ui["filter"]) else "")
+        tags = []
+        if it:
+            key = item_key(it)
+            if key in load_favs():
+                tags.append("FAVORITE")
+            if key in _ui["new"]:
+                tags.append("NEW")
+            if key in _ui["queue"]:
+                tags.append("SELECTED #%d" % (_ui["queue"].index(key) + 1))
+        self["g_tags"].setText("   ".join(tags))
         self.showBadge(it)
         pages = max(1, (n + GRID_PER - 1) // GRID_PER)
         self["g_page"].setText("PAGE %d/%d     %d plugins" % (self.sel // GRID_PER + 1, pages, n) if n else "")
@@ -1897,7 +2588,18 @@ class GridPanel(PanelBase):
             dlog_error("showBadge: %s" % e)
 
     def refreshInstalled(self):
+        self.buildRows()
         self.updateHero()
+
+    def selIndex(self):
+        return self.sel
+
+    def placeIndex(self, idx):
+        self.sel = idx
+        self.refreshGrid()
+
+    def stepNext(self):
+        self.moveSel(1)
 
     def extraStats(self):
         try:
@@ -2135,6 +2837,7 @@ class SettingsScreen(Screen):
 # وزرّان:  Cancel (أحمر) / Hide (أخضر).  الأمر الحقيقي والروابط لا تظهر (تُستبدل بـ [link hidden]).
 VERB_INSTALL = u"التثبيت التلقائي لـ"
 VERB_UPDATE = u"التحديث التلقائي لـ"
+VERB_UNINSTALL = u"إزالة"
 
 LOG_X, LOG_Y, LOG_W, LOG_H, LOG_LINE = 316, 214, 1270, 680, 34
 WRAP_COLS = 84
@@ -2274,17 +2977,31 @@ def run_in_pty(cmd, holder, out):
 
 
 class RunScreen(Screen):
-    def __init__(self, session, item, verb=VERB_INSTALL):
+    def __init__(self, session, items, verb=VERB_INSTALL, kind="install"):
         self.t = T()
         self.skin = run_skin()
         Screen.__init__(self, session)
-        self.item = item
+        self.items = list(items)        # one item, or several that run one after another in this window
+        self.total = len(self.items)
+        self.batch = self.total > 1
+        self.verb = verb
+        self.kind = kind                # install | uninstall | update
+        self.idx = 0
+        self.item = self.items[0]
+        self.before = None              # (folders, packages) of the box just before the current item started
+        self.cmds = []                  # commands already started - never shown in the log
+        self.nGood = 0
+        self.nFail = 0
+        self.lastRc = 0
+        self.lastGood = False
+        self.cancelled = False
         self.lines = []         # finished lines (raw, with color codes)
         self.partial = ""       # current unfinished line
         self.carry = ""         # incomplete escape sequence waiting for the next chunk
         self.cr = False         # last char was a bare carriage return (progress bars)
-        self.done = False
-        self.success = False
+        self.done = False       # the whole run is over
+        self.itemDone = True    # the current item is over
+        self.success = False    # at least one item went well (offers the GUI restart)
         self.closed = False
         self.hidden = False
         self.follow = True      # keep the window on the last lines
@@ -2298,7 +3015,7 @@ class RunScreen(Screen):
         self.holder = {"rc": None, "proc": None, "error": None}
         self.container = None
 
-        self["title"] = Label(u"%s %s" % (verb, item["name"]))
+        self["title"] = Label(self.titleFor(0))
         self["log"] = MenuList([], content=eListboxPythonMultiContent)
         self["log"].l.setFont(0, gFont("Regular", s(26)))
         self["log"].l.setItemHeight(s(LOG_LINE))
@@ -2360,15 +3077,15 @@ class RunScreen(Screen):
             return
         self.dirty = False
         state = (None, False)
-        cmd = self.item.get("cmd")
+        cmds = [c for c in self.cmds if c]
         allrows = []
         for raw in self.lines + ([self.partial] if self.partial else []):
             col, state = scan_line(raw, state)
             plain = SGR_RE.sub("", raw)
             if XTRACE_RE.match(plain):
                 continue
-            if cmd:
-                plain = plain.replace(cmd, "")              # لا يظهر أمر التنفيذ نفسه
+            for c in cmds:
+                plain = plain.replace(c, "")                # لا يظهر أمر التنفيذ نفسه
             plain = URL_RE.sub(LINK_MASK, plain)            # ولا تظهر الروابط
             color = hexint(col)
             for seg in (textwrap.wrap(plain, WRAP_COLS, drop_whitespace=False,
@@ -2414,16 +3131,48 @@ class RunScreen(Screen):
         self.follow = self.offset >= maxoff
         self.draw()
 
+    def titleFor(self, i):
+        base = u"%s %s" % (self.verb, self.items[i].get("name", ""))
+        return (u"(%d/%d)  %s" % (i + 1, self.total, base)) if self.batch else base
+
+    def showCounter(self):
+        if self.batch:
+            self["status"].setText(u"Installing %d / %d    |    Done %d    |    Left %d" % (
+                self.idx + 1, self.total, self.idx, self.total - self.idx))
+        else:
+            self["status"].setText(u"جارٍ التنفيذ... | Running...")
+        setColor(self["status"], self.t["warn"])
+
     def start(self):
         setColor(self["status"], self.t["warn"])
         self.feed(u"\x1b[1;36m> Starting...\x1b[0m\n\n")
         self.render()
+        self.begin(0)
+
+    def begin(self, i):
+        """Starts item number i (0-based). The items of a multi-install run one after another in this same window."""
+        self.idx = i
+        self.item = self.items[i]
+        self.holder = {"rc": None, "proc": None, "error": None}
+        self.q.clear()
+        self.gotOutput = False
+        self.itemDone = False
+        cmd = self.item.get("cmd") or ""
+        if cmd:
+            self.cmds.append(cmd)
+        self["title"].setText(self.titleFor(i))
+        self.showCounter()
+        if self.batch:
+            self.feed(u"\x1b[1;35m[%d/%d]  %s\x1b[0m\n" % (i + 1, self.total, self.item.get("name", "")))
+            self.render()
+        if self.before is None and self.kind == "install" and self.item.get("cat"):
+            self.before = snapshot_system()             # لقطة قبل التثبيت (لمعرفة ما ثُبّت فعلاً)
         dlog("run '%s' | pty available: %s" % (self.item.get("name", ""), HAVE_PTY))
         if HAVE_PTY:
             self.mode = "pty"
             try:
                 threading.Thread(target=run_in_pty, daemon=True,
-                                 args=(self.item["cmd"], self.holder, self.q)).start()
+                                 args=(cmd, self.holder, self.q)).start()
                 self.pollTimer.start(100, False)
                 return
             except Exception as e:
@@ -2436,7 +3185,7 @@ class RunScreen(Screen):
         dlog("using console mode")
         self.container = eConsoleAppContainer()
         self._conns = []
-        for sig, cb in (("appClosed", self.finished), ("dataAvail", self.onData), ("stderrAvail", self.onData)):
+        for sig, cb in (("appClosed", self.itemFinished), ("dataAvail", self.onData), ("stderrAvail", self.onData)):
             try:
                 sig_obj = getattr(self.container, sig)
             except AttributeError:
@@ -2473,29 +3222,83 @@ class RunScreen(Screen):
                 dlog("pty failed, falling back to console")
                 self.startConsole()
             else:
-                self.finished(rc)
+                self.itemFinished(rc)
 
-    def finished(self, retval):
-        if self.done or self.closed:
+    def verify(self, it, rc):
+        """Compares the box before / after the item ran. Returns (good, note, ANSI color of the note)."""
+        ok = (rc == 0)
+        if self.kind == "install" and self.before is not None and it.get("cat"):
+            after = snapshot_system()
+            kind, dirs, pkgs = record_install(it, self.before, after, rc)
+            self.before = after
+            if kind == "new":
+                found = ([os.path.basename(d) for d in dirs]
+                         or [p for p in pkgs if p.startswith(PLUGIN_PKG_PREFIX)] or pkgs)
+                return True, u"Detected: %s" % ", ".join(found[:3]), "1;32"
+            if kind == "soft":
+                return ok, u"Already on the box - nothing new was added", "1;33"
+            if ok:
+                return True, u"No new plugin folder / package detected (not marked as installed)", "1;33"
+            return False, None, ""
+        if self.kind == "uninstall":
+            if finish_uninstall(it, snapshot_system()):
+                return True, u"Removed", "1;32"
+            return False, u"Could not remove everything (another package may need it)", "1;31"
+        return ok, None, ""
+
+    def itemFinished(self, retval):
+        if self.itemDone or self.closed:
             return
+        self.itemDone = True
+        good, note, color = (retval == 0), None, "1;33"
+        try:
+            good, note, color = self.verify(self.item, retval)
+        except Exception as e:
+            dlog_error("verify: %s\n%s" % (e, traceback.format_exc()))
+        self.lastRc, self.lastGood = retval, good
+        if good:
+            self.nGood += 1
+            self.success = True
+        else:
+            self.nFail += 1
+        dlog("finished rc=%s good=%s mode=%s output=%s" % (retval, good, self.mode, self.gotOutput))
+        self.feed(u"\n\x1b[%sm--- finished (exit code %s) ---\x1b[0m\n" % ("1;32" if good else "1;31", retval))
+        if note:
+            self.feed(u"\x1b[%sm%s\x1b[0m\n" % (color, note))
+        self.follow = True
+        self.render()
+        if self.idx + 1 < self.total and not self.cancelled:
+            self.begin(self.idx + 1)                    # التالي في نفس النافذة
+        else:
+            self.allFinished()
+
+    def allFinished(self):
         self.done = True
-        self.success = (retval == 0)
-        if self.success:
-            mark_installed(self.item)
-        dlog("finished rc=%s mode=%s output=%s" % (retval, self.mode, self.gotOutput))
-        self.feed(u"\n\x1b[%sm--- finished (exit code %s) ---\x1b[0m\n" % ("1;32" if self.success else "1;31", retval))
+        self.pollTimer.stop()
+        if self.batch:
+            skipped = self.total - self.idx - 1
+            self.feed(u"\n\x1b[1;36m=== Finished: %d done, %d failed%s ===\x1b[0m\n" % (
+                self.nGood, self.nFail, (u", %d skipped" % skipped) if skipped > 0 else u""))
         self.follow = True
         self.render()
         self.wake()
         self["key_red"].setText(u"Close")
+        if self.batch:
+            text = u"Finished    |    Done %d / %d    |    Failed %d" % (self.nGood, self.total, self.nFail)
+        elif self.kind == "uninstall":
+            text = u"تمت الإزالة | Removed" if self.lastGood else u"تعذّرت الإزالة | Removal failed"
+        elif self.lastGood:
+            text = (u"تم بنجاح | Finished successfully" if self.lastRc == 0
+                    else u"تم التثبيت - رمز الخروج %s | Installed (exit code %s)" % (self.lastRc, self.lastRc))
+        else:
+            text = u"انتهى برمز خطأ %s | Finished with code %s" % (self.lastRc, self.lastRc)
+        self["status"].setText(text)
+        setColor(self["status"], self.t["ok"] if (self.success and not self.nFail)
+                 else (self.t["warn"] if self.success else self.t["bad"]))
         if self.success:
-            self["status"].setText(u"تم بنجاح | Finished successfully")
-            setColor(self["status"], self.t["ok"])
             self["key_green"].setText(u"Restart GUI")
             self.askRestart()
         else:
-            self["status"].setText(u"انتهى برمز خطأ %s | Finished with code %s" % (retval, retval))
-            setColor(self["status"], self.t["bad"])
             self["key_green"].setText(u"")
 
     # ------------------------------ الأزرار ---------------------------------
@@ -2530,9 +3333,10 @@ class RunScreen(Screen):
         if self.wake():
             return
         if not self.done:
+            self.cancelled = True               # يوقف الأمر الحالي وما تبقى من القائمة
             self.killProcess()
             self.pollTimer.stop()
-            self.finished(-1)
+            self.itemFinished(-1)
         else:
             self.close()
 
@@ -2596,9 +3400,13 @@ class RunScreen(Screen):
                     pass
 
 
-def run_item(session, item, verb=VERB_INSTALL, callback=None):
-    """Runs the item's command inside the terminal window (RunScreen)."""
-    session.openWithCallback(callback if callback else (lambda *a: None), RunScreen, item, verb)
+def run_items(session, items, verb=VERB_INSTALL, callback=None, kind="install"):
+    """Runs one or more items (one after another) inside the terminal window (RunScreen)."""
+    session.openWithCallback(callback if callback else (lambda *a: None), RunScreen, items, verb, kind)
+
+
+def run_item(session, item, verb=VERB_INSTALL, callback=None, kind="install"):
+    run_items(session, [item], verb, callback, kind)
 
 
 # --------------------------------- شاشة البداية (Splash) -----------------------
@@ -2736,6 +3544,7 @@ def onPanelClosed(session, result=None):
         tm.start(350, True)
     else:
         cleanup_assets()                    # لا يبقى أي شيء في /tmp عند الخروج
+        reset_ui()                          # الفلتر والتحديد وشارات NEW تنتهي مع إغلاق البانل
 
 
 def open_panel(session):
