@@ -86,6 +86,8 @@ ASSET_DIR = "/tmp/majorpanel"                                # صور مؤقتة
 ERROR_LOG = "/tmp/majorpanel_error.log"
 FAV_FILE = "/etc/enigma2/majorpanel_favs.json"               # المفضلة (مفاتيح الأسماء فقط)
 SEEN_FILE = "/etc/enigma2/majorpanel_seen.json"              # أسماء ما رآه المستخدم (لشارة NEW) - ليست نسخة من ملف الأوامر
+NEW_FILE = "/etc/enigma2/majorpanel_new.json"                # مفاتيح الإضافات الجديدة التي لم يدخل المستخدم قائمة New لرؤيتها بعد
+NEW_CAT = "New"                                              # اسم قائمة الإضافات الجديدة (تظهر أسفل All)
 DEFAULT_SETTINGS = {"view": "list", "theme": "blue_fire", "anim": False, "mainmenu": True, "splash": True,
                     "autoupdate": True}
 # ============================================================================
@@ -750,6 +752,8 @@ def icon_key(cat_name):
         return "all"
     if n == "favorites":
         return "star"
+    if n == "new":
+        return "bolt"
     if n.startswith("search:"):
         return "search"
     for word, icon in ICON_RULES:
@@ -1097,6 +1101,14 @@ class PanelBase(Screen):
     def onCatChanged(self):
         pass
 
+    def markNewSeen(self):
+        """Landing on the New list = the user saw it; from now it disappears once the panel is closed and reopened."""
+        if self.curCatName() == NEW_CAT:
+            try:
+                clear_new_pending()
+            except Exception as e:
+                dlog_error("clear_new: %s" % e)
+
     def selIndex(self):
         return 0
 
@@ -1282,6 +1294,9 @@ class PanelBase(Screen):
                 self.cats.append((FAV_CAT, fav_items))              # المفضلة أعلى الأقسام
             if everything:
                 self.cats.append(("All", prep(everything)))
+            new_items = prep([it for it in everything if item_key(it) in _ui["new"]])
+            if new_items:
+                self.cats.append((NEW_CAT, new_items))              # New أسفل All، تظهر فقط عند وجود إضافات جديدة
             for c, items in self.allcats:
                 p = prep(items)
                 if p or mode in ("all", "az"):                      # الفلتر يخفي الأقسام الفارغة
@@ -1549,7 +1564,7 @@ class PanelBase(Screen):
         except Exception as e:
             dlog_error("note_seen: %s" % e)
             return
-        _ui["new"] |= added
+        _ui["new"] |= added                                     # added = الجديد المحفوظ سابقاً + الجديد الآن
         _ui["new"] &= keys
 
     def rebuild(self, keepKey=None, keepIdx=0):
@@ -1795,9 +1810,10 @@ def toggle_fav(it):
 
 # ---- شارة NEW ----
 def note_seen(keys):
-    """keys = every item key of the list just loaded. Returns the keys that were not in the list the last time
-    the panel loaded it (nothing on the very first run: it only builds the baseline). Only item NAMES are stored,
-    never the commands file - the commands are still read from GitHub only."""
+    """keys = every item key of the list just loaded. Returns the keys that are still 'new': those that appeared since
+    the last load PLUS those found earlier that the user has not opened the New list for yet (kept in NEW_FILE, so a
+    plugin added in the morning is still marked after closing and reopening the panel until New is entered).
+    Nothing on the very first run: it only builds the baseline. Only item NAMES are stored, never the commands file."""
     keys = set(keys)
     raw = _read_json(SEEN_FILE, None)
     old = None
@@ -1806,7 +1822,21 @@ def note_seen(keys):
     added = (keys - old) if old is not None else set()
     if old != keys:
         _write_json(SEEN_FILE, {"keys": sorted(keys)})
-    return added
+    praw = _read_json(NEW_FILE, None)
+    pending = set()
+    if isinstance(praw, dict) and isinstance(praw.get("keys"), list):
+        pending = set(k for k in praw["keys"] if isinstance(k, str))
+    pending = (pending | added) & keys                       # ما اختفى من ملف الأوامر يسقط من القائمة
+    if praw is None or set(praw.get("keys", [])) != pending:
+        _write_json(NEW_FILE, {"keys": sorted(pending)})
+    return pending
+
+
+def clear_new_pending():
+    """The user entered the New list: it will not come back after the panel is closed (only for newer plugins)."""
+    praw = _read_json(NEW_FILE, None)
+    if isinstance(praw, dict) and praw.get("keys"):
+        _write_json(NEW_FILE, {"keys": []})
 
 
 # ---- ما ثُبّت فعلاً: لقطة قبل/بعد لمجلدات الإضافات والحزم ----
@@ -2345,6 +2375,7 @@ class ListPanel(PanelBase):
     def onCatChanged(self):
         self["cats"].moveToIndex(self.catIdx)
         self.fillItems()
+        self.markNewSeen()
 
     def keyLeft(self):
         self.moveCat(-1)
@@ -2674,6 +2705,7 @@ class GridPanel(PanelBase):
         except Exception:
             pass
         self.refreshGrid()
+        self.markNewSeen()
 
     def moveSel(self, delta):
         n = len(self.items())
