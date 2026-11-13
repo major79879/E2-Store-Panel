@@ -73,18 +73,6 @@ except Exception:
 # (وعدّل نفس العنوان في أول installer.sh)
 GITHUB_RAW = "https://raw.githubusercontent.com/major79879/Major-Enigma-Panel/refs/heads/main"
 COMMANDS_URL = GITHUB_RAW + "/MP_Commands.lst"            # ملف الأوامر
-COMMANDS_SIG_URL = GITHUB_RAW + "/MP_Commands.lst.sig"     # توقيعه الرقمي (RSA-SHA256) - يُرفض الملف إن لم يطابقه
-# المفتاح العام فقط (لا يسمح بالتوقيع، فقط بالتحقق) - آمن تماماً أن يبقى هنا داخل الكود
-MP_PUBKEY_PEM = """-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwGw2JsVj+PUF6hIoCmLM
-IfNHqR6ufjvfmIg33AlgWCGjTriq7YMjpCNH2bonQGSXKvVhP5YPHb2bszLU7WhU
-keiPn5qBHAxhB9TKoBJdv7K7J9/KA486NGg08mXgBDZNAruOUrjMEi4oxnWr2p25
-ywPt8Yi5iMODPfNxoShZJPxgwXirhgMtw8WVjEstNqITOuG32ywgJxJKoOpLOxNk
-I7rFtrnEi1ta5/oeSN6DmPZIwI7wstbGhCctl8LtUsQDKM7dxBR54X9AWTVtctKo
-PghG8oHCZFccqzh/fFkguCtM3Bm4VWubD7JfzrxcHEUDYld1gx+9lEZQ1MeHSJwF
-lQIDAQAB
------END PUBLIC KEY-----
-"""
 PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
 TITLE = "Major Enigma Panel"
 CREDIT = "By John Kamel"
@@ -98,7 +86,7 @@ RUN_LOG = "/tmp/majorpanel_run.log"                          # سجل تشخيص
 ASSET_DIR = "/tmp/majorpanel"                                # صور مؤقتة صغيرة تُحذف عند إغلاق البانل
 ERROR_LOG = "/tmp/majorpanel_error.log"
 FAV_FILE = "/etc/enigma2/majorpanel_favs.json"               # المفضلة (مفاتيح الأسماء فقط)
-CMD_CACHE_FILE = "/etc/enigma2/majorpanel_commands.lst"      # آخر نسخة موقّعة من ملف الأوامر (تُحدَّث عند الدخول فقط)
+CMD_CACHE_FILE = "/etc/enigma2/majorpanel_commands.lst"      # آخر نسخة محفوظة من ملف الأوامر (تُحدَّث عند الدخول فقط)
 SEEN_FILE = "/etc/enigma2/majorpanel_seen.json"              # أسماء ما رآه المستخدم (لشارة NEW) - ليست نسخة من ملف الأوامر
 NEW_FILE = "/etc/enigma2/majorpanel_new.json"                # مفاتيح الإضافات الجديدة التي لم يدخل المستخدم قائمة New لرؤيتها بعد
 NEW_CAT = "New"                                              # اسم قائمة الإضافات الجديدة (تظهر أسفل All)
@@ -414,49 +402,6 @@ def _fetch(url, timeout=20):
     return _fetch_bytes(url, timeout).decode("utf-8", "ignore")
 
 
-def _mp_pubkey_path():
-    """Writes the embedded public key to disk once (needed by the openssl CLI) and returns its path."""
-    try:
-        os.makedirs(ASSET_DIR, exist_ok=True)
-        p = os.path.join(ASSET_DIR, "mp_pub.pem")
-        if not os.path.isfile(p):
-            with open(p, "w", encoding="utf-8") as f:
-                f.write(MP_PUBKEY_PEM)
-        return p
-    except Exception as e:
-        dlog_error("pubkey write: %s" % e)
-        return None
-
-
-def verify_commands_signature(raw, sig):
-    """RSA-SHA256 signature check of the commands file via the openssl CLI (no extra Python crypto
-    library needed - openssl is already a hard dependency for the encrypted installer). raw/sig are
-    bytes. Returns True only if the signature matches raw exactly under the embedded public key."""
-    pub = _mp_pubkey_path()
-    if not pub or not sig:
-        return False
-    data_tmp = os.path.join(ASSET_DIR, "mp_cmds.tmp")
-    sig_tmp = os.path.join(ASSET_DIR, "mp_cmds.sig")
-    try:
-        with open(data_tmp, "wb") as f:
-            f.write(raw)
-        with open(sig_tmp, "wb") as f:
-            f.write(sig)
-        rc = subprocess.call(["openssl", "dgst", "-sha256", "-verify", pub,
-                               "-signature", sig_tmp, data_tmp],
-                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return rc == 0
-    except Exception as e:
-        dlog_error("verify_commands_signature: %s" % e)
-        return False
-    finally:
-        for p in (data_tmp, sig_tmp):
-            try:
-                os.remove(p)
-            except Exception:
-                pass
-
-
 def read_cache():
     """Saved copy of the commands file ('' when there is none or it is damaged)."""
     text = read_file(CMD_CACHE_FILE, "")
@@ -464,7 +409,7 @@ def read_cache():
 
 
 def write_cache(text):
-    """Saves the verified commands file (atomic; skipped when identical, to spare the flash)."""
+    """Saves the commands file (atomic; skipped when identical, to spare the flash)."""
     try:
         if read_file(CMD_CACHE_FILE, None) == text.strip():
             return
@@ -1043,7 +988,7 @@ def header_xml():
         wid("h_ver", (925, 20, 160, 70), font=36, fg=ring_hex(t), halign="center", valign="center"),
         pixw("cart_img", (1100, 27, 64, 56), z=3),                       # عربة التثبيت المتعدد
         wid("cart_n", (1116, 36, 36, 26), font=22, fg="#FFFFFF", halign="center", valign="center", z=4),
-        wid("h_server", (1180, 20, 370, 70), font=28, fg=c["warn"], halign="left", valign="center", extra='noWrap="1"'),
+        wid("h_server", (1190, 20, 360, 70), font=28, fg=c["warn"], halign="left", valign="center", extra='noWrap="1"'),
         wid("clock", (1560, 4, 300, 62), font=52, fg="#FFFFFF", halign="right", valign="center"),
         wid("date", (1440, 66, 420, 36), font=24, fg=c["muted"], halign="right", valign="center"),
     ]
@@ -1311,6 +1256,8 @@ class PanelBase(Screen):
         if getattr(self, "fetching", False):
             return
         self.fetching = True
+        if not hasattr(self, "shown"):
+            self.shown = ""                             # لم تكن تُهيَّأ قبل الاستخدام (AttributeError عند عدم وجود نسخة محفوظة)
         if initial:
             cached = read_cache()
             if cached:
@@ -1327,14 +1274,22 @@ class PanelBase(Screen):
             return
         text, src = result
         self.setServer("online")
-        if text.strip() != self.shown.strip():          # لا نعيد بناء القائمة إن لم يتغير شيء
-            self.shown = text
-            self.setData(text)
+        try:
+            if text.strip() != self.shown.strip():      # لا نعيد بناء القائمة إن لم يتغير شيء
+                self.shown = text
+                self.setData(text)
+        except Exception:
+            # خطأ في بناء القائمة لا يعني أن السيرفر Offline (كان يصل لـ onlineFail عبر Twisted)
+            dlog_error("onlineOK/setData:\n%s" % traceback.format_exc())
 
     def onlineFail(self, failure):
         self.fetching = False
         if self.closing:
             return
+        try:
+            dlog_error("load_online failed: %s" % failure.getErrorMessage())   # السبب الفعلي لـ Offline
+        except Exception:
+            pass
         if not self.shown:                              # لا نسخة معروضة: نجرّب المحفوظة
             cached = read_cache()
             if cached:
