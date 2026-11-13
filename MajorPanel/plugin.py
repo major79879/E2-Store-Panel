@@ -17,6 +17,7 @@ import shlex
 import shutil
 import ssl
 import struct
+import subprocess
 import sys
 import textwrap
 import time
@@ -72,6 +73,18 @@ except Exception:
 # (وعدّل نفس العنوان في أول installer.sh)
 GITHUB_RAW = "https://raw.githubusercontent.com/major79879/Major-Enigma-Panel/refs/heads/main"
 COMMANDS_URL = GITHUB_RAW + "/MP_Commands.lst"            # ملف الأوامر
+COMMANDS_SIG_URL = GITHUB_RAW + "/MP_Commands.lst.sig"     # توقيعه الرقمي (RSA-SHA256) - يُرفض الملف إن لم يطابقه
+# المفتاح العام فقط (لا يسمح بالتوقيع، فقط بالتحقق) - آمن تماماً أن يبقى هنا داخل الكود
+MP_PUBKEY_PEM = """-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwGw2JsVj+PUF6hIoCmLM
+IfNHqR6ufjvfmIg33AlgWCGjTriq7YMjpCNH2bonQGSXKvVhP5YPHb2bszLU7WhU
+keiPn5qBHAxhB9TKoBJdv7K7J9/KA486NGg08mXgBDZNAruOUrjMEi4oxnWr2p25
+ywPt8Yi5iMODPfNxoShZJPxgwXirhgMtw8WVjEstNqITOuG32ywgJxJKoOpLOxNk
+I7rFtrnEi1ta5/oeSN6DmPZIwI7wstbGhCctl8LtUsQDKM7dxBR54X9AWTVtctKo
+PghG8oHCZFccqzh/fFkguCtM3Bm4VWubD7JfzrxcHEUDYld1gx+9lEZQ1MeHSJwF
+lQIDAQAB
+-----END PUBLIC KEY-----
+"""
 PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
 TITLE = "Major Enigma Panel"
 CREDIT = "By John Kamel"
@@ -388,18 +401,68 @@ def dlog(msg):
 
 
 # ------------------------------ تحميل البيانات ومعلومات الجهاز -----------------
-def _fetch(url, timeout=20):
+def _fetch_bytes(url, timeout=20):
     ctx = ssl._create_unverified_context()      # بعض الصور بدون شهادات CA
     sep = "&" if "?" in url else "?"
     req = Request(url + sep + "t=%d" % int(time.time()),
                   headers={"User-Agent": "MajorPanel/1.0", "Cache-Control": "no-cache"})
-    return urlopen(req, timeout=timeout, context=ctx).read().decode("utf-8", "ignore")
+    return urlopen(req, timeout=timeout, context=ctx).read()
 
+
+def _fetch(url, timeout=20):
+    return _fetch_bytes(url, timeout).decode("utf-8", "ignore")
+
+
+def _mp_pubkey_path():
+    """Writes the embedded public key to disk once (needed by the openssl CLI) and returns its path."""
+    try:
+        os.makedirs(ASSET_DIR, exist_ok=True)
+        p = os.path.join(ASSET_DIR, "mp_pub.pem")
+        if not os.path.isfile(p):
+            with open(p, "w", encoding="utf-8") as f:
+                f.write(MP_PUBKEY_PEM)
+        return p
+    except Exception as e:
+        dlog_error("pubkey write: %s" % e)
+        return None
+
+
+def verify_commands_signature(raw, sig):
+    """RSA-SHA256 signature check of the commands file via the openssl CLI (no extra Python crypto
+    library needed - openssl is already a hard dependency for the encrypted installer). raw/sig are
+    bytes. Returns True only if the signature matches raw exactly under the embedded public key."""
+    pub = _mp_pubkey_path()
+    if not pub or not sig:
+        return False
+    data_tmp = os.path.join(ASSET_DIR, "mp_cmds.tmp")
+    sig_tmp = os.path.join(ASSET_DIR, "mp_cmds.sig")
+    try:
+        with open(data_tmp, "wb") as f:
+            f.write(raw)
+        with open(sig_tmp, "wb") as f:
+            f.write(sig)
+        rc = subprocess.call(["openssl", "dgst", "-sha256", "-verify", pub,
+                               "-signature", sig_tmp, data_tmp],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return rc == 0
+    except Exception as e:
+        dlog_error("verify_commands_signature: %s" % e)
+        return False
+    finally:
+        for p in (data_tmp, sig_tmp):
+            try:
+                os.remove(p)
+            except Exception:
+                pass
 
 
 def load_online():
     """Runs in a worker thread. Returns (text, 'online') or raises."""
-    text = _fetch(COMMANDS_URL)
+    raw = _fetch_bytes(COMMANDS_URL)
+    sig = _fetch_bytes(COMMANDS_SIG_URL)
+    if not verify_commands_signature(raw, sig):
+        raise ValueError("bad signature")        # يُعامَل كـ Offline: تُبقي آخر قائمة موثوقة ولا تعرض شيئاً غير موقَّع
+    text = raw.decode("utf-8", "ignore")
     if "+++" not in text:
         raise ValueError("bad file")
     return text, "online"
