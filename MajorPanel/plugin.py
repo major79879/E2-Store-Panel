@@ -98,6 +98,7 @@ RUN_LOG = "/tmp/majorpanel_run.log"                          # سجل تشخيص
 ASSET_DIR = "/tmp/majorpanel"                                # صور مؤقتة صغيرة تُحذف عند إغلاق البانل
 ERROR_LOG = "/tmp/majorpanel_error.log"
 FAV_FILE = "/etc/enigma2/majorpanel_favs.json"               # المفضلة (مفاتيح الأسماء فقط)
+CMD_CACHE_FILE = "/etc/enigma2/majorpanel_commands.lst"      # آخر نسخة موقّعة من ملف الأوامر (تُحدَّث عند الدخول فقط)
 SEEN_FILE = "/etc/enigma2/majorpanel_seen.json"              # أسماء ما رآه المستخدم (لشارة NEW) - ليست نسخة من ملف الأوامر
 NEW_FILE = "/etc/enigma2/majorpanel_new.json"                # مفاتيح الإضافات الجديدة التي لم يدخل المستخدم قائمة New لرؤيتها بعد
 NEW_CAT = "New"                                              # اسم قائمة الإضافات الجديدة (تظهر أسفل All)
@@ -456,15 +457,32 @@ def verify_commands_signature(raw, sig):
                 pass
 
 
+def read_cache():
+    """Saved copy of the commands file ('' when there is none or it is damaged)."""
+    text = read_file(CMD_CACHE_FILE, "")
+    return text if "+++" in text else ""
+
+
+def write_cache(text):
+    """Saves the verified commands file (atomic; skipped when identical, to spare the flash)."""
+    try:
+        if read_file(CMD_CACHE_FILE, None) == text.strip():
+            return
+        tmp = CMD_CACHE_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp, CMD_CACHE_FILE)
+    except Exception as e:
+        dlog_error("write_cache: %s" % e)
+
+
 def load_online():
     """Runs in a worker thread. Returns (text, 'online') or raises."""
-    raw = _fetch_bytes(COMMANDS_URL)
-    sig = _fetch_bytes(COMMANDS_SIG_URL)
-    if not verify_commands_signature(raw, sig):
-        raise ValueError("bad signature")        # يُعامَل كـ Offline: تُبقي آخر قائمة موثوقة ولا تعرض شيئاً غير موقَّع
+    raw = _fetch_bytes(COMMANDS_URL, timeout=8)
     text = raw.decode("utf-8", "ignore")
     if "+++" not in text:
         raise ValueError("bad file")
+    write_cache(text)
     return text, "online"
 
 
@@ -1023,9 +1041,9 @@ def header_xml():
         pixw("logo_img", (34, 5, 100, 100), z=3),
         wid("credit", (686, 20, 400, 70), font=24, fg=c["muted"], valign="center", extra='noWrap="1"'),
         wid("h_ver", (925, 20, 160, 70), font=36, fg=ring_hex(t), halign="center", valign="center"),
-        wid("h_server", (1090, 20, 340, 70), font=28, fg=c["warn"], halign="right", valign="center"),
-        pixw("cart_img", (1078, 27, 64, 56), z=3),                       # عربة التثبيت المتعدد
-        wid("cart_n", (1094, 36, 36, 26), font=22, fg="#FFFFFF", halign="center", valign="center", z=4),
+        pixw("cart_img", (1100, 27, 64, 56), z=3),                       # عربة التثبيت المتعدد
+        wid("cart_n", (1116, 36, 36, 26), font=22, fg="#FFFFFF", halign="center", valign="center", z=4),
+        wid("h_server", (1180, 20, 370, 70), font=28, fg=c["warn"], halign="left", valign="center", extra='noWrap="1"'),
         wid("clock", (1560, 4, 300, 62), font=52, fg="#FFFFFF", halign="right", valign="center"),
         wid("date", (1440, 66, 420, 36), font=24, fg=c["muted"], halign="right", valign="center"),
     ]
@@ -1045,7 +1063,8 @@ def buttons_xml(hint_extra=""):
 
 
 # --------------------------------- الشاشة الأساسية ---------------------------
-SERVER_OFFLINE_MSG = u"تعذّر الاتصال بسيرفر البانل - تحقق من الإنترنت | Cannot connect to panel server"
+SERVER_OFFLINE_MSG = u"تعذّر الاتصال بالسيرفر - تم عرض النسخة المحفوظة | Offline - showing the saved copy"
+SERVER_OFFLINE_NOCACHE_MSG = u"تعذّر الاتصال بسيرفر البانل - تحقق من الإنترنت | Cannot connect to panel server"
 
 # سياقات الأزرار المعتادة فقط. (لا نربط سياقات وضع التلفاز مثل InfobarChannelSelection حتى لا نؤثر
 # على أزرار الاتجاهات بعد الخروج من البانل)
@@ -1055,6 +1074,8 @@ ACTION_CONTEXTS = ["OkCancelActions", "ColorActions", "DirectionActions", "Navig
 
 class PanelBase(Screen):
     NO_NATIVE = False                   # Grid: القوائم لا تلتقط أسهم الريموت بنفسها
+    shown = ""                          # نص الأوامر المعروض حالياً (محفوظ أو من السيرفر)
+    fetching = False
     """Everything shared by the panel screens: header, clock, server state, device info
     (RAM / HDD / IP ...), animated title, loading the commands, search, install, settings."""
     DEV = device_layout(575, 72)          # lower-right card
@@ -1196,7 +1217,7 @@ class PanelBase(Screen):
         self.updateStats()
         self.updateClock()
         self.tickTimer.start(2000, False)
-        self.refresh()
+        self.refresh(initial=True)
 
     def onTick(self):
         self.tickCount += 1
@@ -1285,22 +1306,41 @@ class PanelBase(Screen):
             self.titleTimer.start(90, False)
 
     # ----------------------------- تحميل الأوامر -----------------------------
-    def refresh(self):
+    def refresh(self, initial=False):
+        """initial=True (عند الدخول): تُعرض النسخة المحفوظة فوراً ثم يُحدَّث من السيرفر في الخلفية."""
+        if getattr(self, "fetching", False):
+            return
+        self.fetching = True
+        if initial:
+            cached = read_cache()
+            if cached:
+                self.shown = cached
+                self.setData(cached)
         self.setServer("connecting")
         d = deferToThread(load_online)
         d.addCallback(self.onlineOK)
         d.addErrback(self.onlineFail)
 
     def onlineOK(self, result):
+        self.fetching = False
         if self.closing:
             return
         text, src = result
         self.setServer("online")
-        self.setData(text)
+        if text.strip() != self.shown.strip():          # لا نعيد بناء القائمة إن لم يتغير شيء
+            self.shown = text
+            self.setData(text)
 
     def onlineFail(self, failure):
-        if not self.closing:
-            self.setServer("offline")
+        self.fetching = False
+        if self.closing:
+            return
+        if not self.shown:                              # لا نسخة معروضة: نجرّب المحفوظة
+            cached = read_cache()
+            if cached:
+                self.shown = cached
+                self.setData(cached)
+        self.setServer("offline")
 
     def setServer(self, state):
         """state: online | offline | connecting  (shown at the top as: Server: Online ...)"""
@@ -1311,7 +1351,7 @@ class PanelBase(Screen):
         self["h_server"].setText("Server:  " + label)
         setColor(self["h_server"], color)
         if state == "offline":
-            self["hint"].setText(SERVER_OFFLINE_MSG)
+            self["hint"].setText(SERVER_OFFLINE_MSG if getattr(self, "shown", "") else SERVER_OFFLINE_NOCACHE_MSG)
             setColor(self["hint"], self.t["bad"])
         else:
             self["hint"].setText(self.hintText())
