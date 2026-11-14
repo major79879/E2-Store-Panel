@@ -26,6 +26,9 @@ opkg install enigma2-plugin-extensions-e2iplayer-deps
 ## === # EPG Import - Enigma2 Community # = # إداة إستيراد بيانات دليل البرامج الإلكتروني مصادر قابلة للتهيئة # === ##
 opkg update && opkg install enigma2-plugin-extensions-epgimport
 
+## === # Auto Timer - Enigma2 Community # = # إنشاء تسجيلات تلقائية اعتمادًا على قواعد البحث في دليل البرامج الإلكتروني # === ##
+opkg update && opkg install enigma2-plugin-extensions-autotimer
+
 ## === # OpenATV Feed 2 Devel - Enigma2 Community # = # تغيير فيد الصورة الاصلي لفيد الصورة للمطوريين لتحديث الصورة بإضافات قيد التطوير # === ##
 wget -O - -q https://feeds2.mynonpublic.com/devel-feed | bash
 
