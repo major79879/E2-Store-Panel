@@ -239,5 +239,8 @@ wget -q --no-check-certificate -O - https://raw.githubusercontent.com/emilnabil/
 
 ## ============================== +++ Bouquets +++ ============================= ##
 
+## === # Ciefp Settings T2MI Abertis - Ciefp # = # أداة لاضافة مكتبات تشغيل القنوات الارضية ابيرتيس الاسبانية # === #
+wget -q "--no-check-certificate" https://raw.githubusercontent.com/ciefp/CiefpSettingsT2miAbertis/main/installer.sh -O - | /bin/sh
+
 ## === # Abertis 30W - Ciefp # = # اضافة مفضلة قنوات ابيرتيس الاسبانية الارضية لملف قنواتك # === #
 wget -q --no-check-certificate "https://raw.githubusercontent.com/major79879/Major_Addons/refs/heads/main/installer_abertis_30w.sh" -O - | /bin/sh
