@@ -138,7 +138,7 @@ wget https://raw.githubusercontent.com/biko-73/TMBD/main/installer.sh -O - | /bi
 ## === # TMBD Search - Ciefp # = # إضافة لجلب وعرض معلومات الأفلام والمسلسلات # === #
 wget -q https://raw.githubusercontent.com/ciefp/CiefpTMDBSearch/main/installer.sh -O - | /bin/sh
 
-## === # Youre Watching - Asdrere ALT # أداة عرض معلومات الافلام بطريقة جذابة # === ##
+## === # Youre Watching - Asdrere ALT # = # أداة عرض معلومات الافلام بطريقة جذابة # === ##
 wget --no-check-certificate -qO- "https://raw.githubusercontent.com/asdrere123-alt/YoureWatching/main/install_yourewatching.sh?t=$(date +%s)" | bash
 
 ## === # EPG Grabber - Ziko # = # أداة إستيراد وتحديث بيانات دليل البرامج الإلكتروني من مصادر متعددة # === ##
@@ -233,6 +233,9 @@ u=https://raw.githubusercontent.com/xximhxx/SatEnigmaFinder/main; f=$(mktemp) &&
 
 ## === # Simply Cams - Ahmed Mohammed Abbas # = # أداة متطورة تمكنك من مشاهدة كاميرات منزلك على الرسيفر # === #
 wget -q -O - https://raw.githubusercontent.com/Ahmed-Mohammed-Abbas/SimplyCams/main/installer.sh | sh
+
+## === # Advanced Screenshot - Emil Nabil # = # أداة لالتقاط صور من واجهة النظام # === #
+wget -q --no-check-certificate -O - https://raw.githubusercontent.com/emilnabil/download-plugins/main/advancedscreenshot/advancedscreenshot.sh | /bin/sh
 
 ## ============================== +++ Bouquets +++ ============================= ##
 
