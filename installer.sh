@@ -48,6 +48,19 @@ for f in __init__.py lstparser.py plugin.py assets.py plugin.png; do
     fi
 done
 
+# 1-ب) صور الأجهزة (اختيارية): مجلد boxes داخل MajorPanel على GitHub.
+#      لإضافة جهاز جديد: ارفع صورته إلى MajorPanel/boxes/ بالاسم  <موديل الجهاز>.png  ثم أضف اسمها هنا.
+#      فشل تحميل أي صورة لا يوقف التثبيت (تُتجاهل فقط).
+BOXES="sf8008.png sf8008m.png"
+mkdir -p "$TMP/boxes"
+for f in $BOXES; do
+    say "$CB" "> Downloading boxes/$f ..."
+    if ! wget -q --no-check-certificate "$REPO/boxes/$f" -O "$TMP/boxes/$f" || [ ! -s "$TMP/boxes/$f" ]; then
+        say "$CY" "> Skipped (not found): boxes/$f"
+        rm -f "$TMP/boxes/$f"
+    fi
+done
+
 # 2) ثبّت
 say "$CB" "> Installing files ..."
 mkdir -p "$DIR/boxes"   # مجلد اختياري لصور الأجهزة مثل sf8008.png
