@@ -29,6 +29,9 @@ opkg update && opkg install enigma2-plugin-extensions-epgimport
 ## === # Auto Timer - Enigma2 Community # = # إنشاء تسجيلات تلقائية اعتمادًا على قواعد البحث في دليل البرامج الإلكتروني # === ##
 opkg update && opkg install enigma2-plugin-extensions-autotimer
 
+## === # Series Plugin - Enigma2 Community # = # أداة للتعرف على المسلسلات وربطها بمعلومات الحلقات حسب المصدر والإعدادات # === ##
+opkg update && opkg install enigma2-plugin-extensions-seriesplugin
+
 ## === # OpenATV Feed 2 Devel - Enigma2 Community # = # تغيير فيد الصورة الاصلي لفيد الصورة للمطوريين لتحديث الصورة بإضافات قيد التطوير # === ##
 wget -O - -q https://feeds2.mynonpublic.com/devel-feed | bash
 
