@@ -17,6 +17,9 @@ opkg update && opkg install astra-sm
 ## === # Many Enigma2 Players - Enigma2 Community # = # إضافة مكتبات مشغلات الصوت والصورة لتعمل الاضافات بطريقة سليمة # === ##
 opkg install --force-reinstall enigma2-plugin-systemplugins-serviceapp exteplayer3 ffmpeg gstplayer
 
+## === # E2I Player Deps - Enigma2 Community # = # إضافة المكتبات اللازمة لتشغيل الاضافة بطريقة سليمة # === ##
+opkg install enigma2-plugin-extensions-e2iplayer-deps
+
 ## === # OpenATV Feed 2 Devel - Enigma2 Community # = # تغيير فيد الصورة الاصلي لفيد الصورة للمطوريين لتحديث الصورة بإضافات قيد التطوير # === ##
 wget -O - -q https://feeds2.mynonpublic.com/devel-feed | bash
 
