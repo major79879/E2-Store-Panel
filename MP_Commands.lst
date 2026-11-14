@@ -113,6 +113,9 @@ wget -q -O - https://raw.githubusercontent.com/ismail9875/E2BissKeyEditor/refs/h
 ## === # E2 Biss Key Editor - Ismail El Khouly # = # أداة لإدخال شفرات القنوات # === ##
 wget -q --no-check-certificate http://dreambox4u.com/dreamarabia/Satelliweb_e2/install_satelliweb_test.sh -O - | bash
 
+## === # Pom Biss - Shreef # = # أداة للبحث عن الفيدات وإظهار وإدخال شفراتها # === ##
+cd /tmp && wget https://raw.githubusercontent.com/Shr776/PomBiss/main/installer.sh && sh inst
+
 ## ============================== +++ Audio +++ ============================== ##
 
 ## === # IP Audio Pro - Zakaria Khadiri # = # أداة تشغيل وإدارة خدمات الصوت والراديو عبر الإنترنت # === ##
