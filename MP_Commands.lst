@@ -6,6 +6,14 @@ wget -qO- https://raw.githubusercontent.com/major79879/LinuxCommands/refs/heads/
 ## === # Update SoftCam Keys - John Kamel # = # تحديث ملف شفرات السوفتكام # === ##
 wget -qO- https://raw.githubusercontent.com/major79879/LinuxCommands/refs/heads/main/update_linuxcommands.sh | bash
 
+## ================================= +++ Libraries +++ ================================= ##
+
+## === # WGET - Enigma2 Community # = # مكتبة انيجما مهمة جدا لتشغيل الاضافات بطريقة سليمة # === ##
+opkg update && opkg install wget
+
+## === # Astra SM - Enigma2 Community # = # مكتبة انيجما مهمة جدا لتشغيل الاضافات بطريقة سليمة # === ##
+opkg update && opkg install astra-sm
+
 ## ================================= +++ Panels +++ ================================= ##
 
 ## === # AJPanel - AMAJamry # = # لوحة أدوات متكاملة لإدارة إضافات وأدوات إنيجما فى مكان واحد # === ##
