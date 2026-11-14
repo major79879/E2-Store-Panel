@@ -11,6 +11,9 @@ wget -qO- https://raw.githubusercontent.com/major79879/LinuxCommands/refs/heads/
 ## === # WGET - Enigma2 Community # = # مكتبة انيجما مهمة جدا لتشغيل الاضافات بطريقة سليمة # === ##
 opkg update && opkg install wget
 
+## === # CURL - Enigma2 Community # = # مكتبة انيجما مهمة جدا لتشغيل الاضافات بطريقة سليمة # === ##
+opkg update && opkg install curl
+
 ## === # Astra SM - Enigma2 Community # = # مكتبة انيجما مهمة جدا لتشغيل الاضافات بطريقة سليمة # === ##
 opkg update && opkg install astra-sm
 
