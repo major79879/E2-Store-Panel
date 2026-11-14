@@ -164,7 +164,7 @@ wget -O /tmp/installer_ChannelLingo_auto.sh "https://raw.githubusercontent.com/S
 
 ## =============================== +++ EPG +++ ============================== ##
 
-## === # EPG Import - Saiedf # = # أداة إستيراد وتحديث بيانات دليل البرامج الإلكتروني من مصادر متعددة # === ##
+## === # EPG Import - Saied Elfar # = # أداة إستيراد وتحديث بيانات دليل البرامج الإلكتروني من مصادر متعددة # === ##
 wget -qO- https://raw.githubusercontent.com/Saiedf/EPGImport/main/installer_epgimportiet5_auto.sh | /bin/sh
 
 ## === # TMBD - Biko # = # إضافة لجلب وعرض معلومات الأفلام والمسلسلات # === #
@@ -178,6 +178,9 @@ wget --no-check-certificate -qO- "https://raw.githubusercontent.com/asdrere123-a
 
 ## === # EPG Grabber - Ziko # = # أداة إستيراد وتحديث بيانات دليل البرامج الإلكتروني من مصادر متعددة # === ##
 wget -q "--no-check-certificate" https://raw.githubusercontent.com/ziko-ZR1/Epg-plugin/master/Download/installer.sh -O - | /bin/sh
+
+## === # Xtra Event - Digiteng # = # أداة جلب البوسترات وبيانات الأحداث والأفلام من دليل البرامج الإلكتروني # === ##
+wget -q --no-check-certificate https://github.com/digiteng/xtra/raw/main/xtraEvent.sh -O - | /bin/sh
 
 ## =============================== +++ IPTV +++ ============================== ##
 
