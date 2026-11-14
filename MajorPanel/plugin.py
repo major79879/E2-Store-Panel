@@ -78,7 +78,7 @@ TITLE = "Major Enigma Panel"
 CREDIT = "By John Kamel"
 # تحديث البانل نفسه (إعادة التثبيت) - ملف installer.sh موجود في جذر المستودع (خارج مجلد MajorPanel)
 INSTALLER_URL = GITHUB_RAW + "/installer.sh"
-PLUGIN_VERSION = "1"                                        # رقم إصدار هذه النسخة (يظهر V12) - غيّره مع كل إصدار
+PLUGIN_VERSION = "2"                                        # رقم إصدار هذه النسخة (يظهر V12) - غيّره مع كل إصدار
 VERSION_URL = GITHUB_RAW + "/Version.txt"                    # ملف الإصدار على GitHub: يحوي رقماً فقط مثل 12
 UPDATE_CMD = 'wget -q --no-check-certificate -O - "%s" | /bin/sh -s norestart' % INSTALLER_URL
 SETTINGS_FILE = "/etc/enigma2/majorpanel_settings.json"      # عرض البانل + الثيم المختار
@@ -267,11 +267,55 @@ THEMES = {
         red="#D9507F", green="#3BA38F", yellow="#C08B3A", blue="#7A6AD0",
         ok="#7ED9B7", bad="#FF6F9A", warn="#F2C265",
         stops=None, title_set=None, sel_key=None),
+    # ---- V13: ثيمات مسطّحة هادئة (بلا توهج، تباين مريح للقراءة) ----
+    "slate_calm": dict(
+        name="Slate Calm", modern=False,
+        bg="#171B21", card="#1F252D", card2="#272F39", line="#394352", text="#DFE5EC", muted="#9AA6B5",
+        accent="#86AFDB", second="#DDBB8F", sel="#36597F", hdr="#36597F", term="#12161B",
+        red="#B0504D", green="#357C57", yellow="#8F6B1E", blue="#36597F",
+        ok="#7CC79B", bad="#E48080", warn="#DDB86E",
+        stops=None, title_set=None, sel_key=None),
+    "sage_stone": dict(
+        name="Sage Stone", modern=False,
+        bg="#161B18", card="#1E2521", card2="#27302B", line="#36443C", text="#DEE6E0", muted="#97A89D",
+        accent="#8DC09F", second="#DCC88C", sel="#365F4B", hdr="#3F6E57", term="#111613",
+        red="#B0504D", green="#357C57", yellow="#8F6B1E", blue="#386885",
+        ok="#86CBA2", bad="#E48484", warn="#DCC27A",
+        stops=None, title_set=None, sel_key=None),
+    "mocha_cream": dict(
+        name="Mocha Cream", modern=False,
+        bg="#1B1816", card="#252120", card2="#2F2A28", line="#473F3A", text="#EAE2DA", muted="#AA9F94",
+        accent="#D6AB7E", second="#A3BFA5", sel="#68492F", hdr="#7A5638", term="#151210",
+        red="#B0504D", green="#3E7C54", yellow="#946E20", blue="#4C6F8C",
+        ok="#8CCB9F", bad="#E58A82", warn="#E0B870",
+        stops=None, title_set=None, sel_key=None),
+    "plum_mist": dict(
+        name="Plum Mist", modern=False,
+        bg="#1A171F", card="#231F2B", card2="#2C2736", line="#433C54", text="#E4E0EB", muted="#A49DB3",
+        accent="#B6A5DA", second="#DDB6A4", sel="#4F4379", hdr="#5F5190", term="#141218",
+        red="#B0506A", green="#387D5B", yellow="#8F6B22", blue="#51579B",
+        ok="#86CBA8", bad="#E78397", warn="#DEBA75",
+        stops=None, title_set=None, sel_key=None),
+    "sea_glass": dict(
+        name="Sea Glass", modern=False,
+        bg="#141B1E", card="#1B2528", card2="#233136", line="#33474D", text="#DDE7E9", muted="#91A8AD",
+        accent="#7EBBBB", second="#DDB48B", sel="#2F5F66", hdr="#35707A", term="#10161A",
+        red="#B0504D", green="#357D5B", yellow="#8F6C1E", blue="#33647D",
+        ok="#84CBA4", bad="#E38383", warn="#DDB870",
+        stops=None, title_set=None, sel_key=None),
+    "terracotta": dict(
+        name="Terracotta Ash", modern=False,
+        bg="#1C1817", card="#262120", card2="#302A29", line="#4A4040", text="#EBE2E0", muted="#AC9E9C",
+        accent="#DB9A8F", second="#9DBCB4", sel="#6C3F39", hdr="#7E4A43", term="#161211",
+        red="#B04C48", green="#3E7D58", yellow="#916C1F", blue="#4B6F8A",
+        ok="#8BCBA0", bad="#E58585", warn="#DFB972",
+        stops=None, title_set=None, sel_key=None),
 }
 MODERN_ORDER = ["blue_fire", "twilight", "ember_night", "ocean_sun", "aurora", "royal_gold",
                 "sakura", "glacier", "crimson_gold", "violet_storm", "cyber_lime",
                 "neon_blue", "orange", "yellow", "green", "purple", "red", "aqua"]
-CLASSIC_ORDER = ["classic", "graphite", "midnight_indigo", "forest", "warm_slate", "rose_dusk"]
+CLASSIC_ORDER = ["classic", "graphite", "midnight_indigo", "forest", "warm_slate", "rose_dusk",
+                 "slate_calm", "sage_stone", "mocha_cream", "plum_mist", "sea_glass", "terracotta"]
 
 _state = dict(DEFAULT_SETTINGS)
 
@@ -1073,7 +1117,7 @@ class PanelBase(Screen):
             "red": self.keyRed, "green": self.keyGreen,     # الصفحة 0: خروج / تثبيت   الصفحة 1: مفضلة / تحديد
             "yellow": self.keyYellow, "blue": self.keyBlue,  # الصفحة 0: بحث / تحديث    الصفحة 1: فلتر / إزالة
             "menu": self.openSettings,                  # الإعدادات
-            "info": self.askUpdate,                     # تحديث البانل نفسه
+            "info": self.openInfo,                      # معلومات الجهاز (التحديث من Settings -> Update panel)
             "left": self.keyLeft, "right": self.keyRight,
             "up": self.keyUp, "down": self.keyDown,
             "pageUp": self.prevCat, "pageDown": self.nextCat,
@@ -1745,6 +1789,9 @@ class PanelBase(Screen):
         if changed:
             self.close("reopen")            # يعيد فتح البانل بالعرض والثيم الجديدين
 
+    def openInfo(self):
+        self.session.open(InfoScreen)
+
     def askUpdate(self):
         self.session.openWithCallback(
             self.confirmUpdate, MessageBox,
@@ -2272,7 +2319,7 @@ def update_item():
 # --------------------------------- عرض القائمة (List) -------------------------
 class ListPanel(PanelBase):
     HINT = ("LEFT/RIGHT : section   UP/DOWN : select   OK : install   1 : fav   2 : filter   3 : select   "
-            "4 : uninstall   BLUE : refresh   MENU : settings   INFO : update")
+            "4 : uninstall   BLUE : refresh   MENU : settings   INFO : device info")
 
     def buildSkin(self):
         c = tc()
@@ -2477,7 +2524,7 @@ class GridPanel(PanelBase):
     DEV = device_layout(125, 110)
     PIC = (1340, DEV["pic"][0], 510, 110)
     HINT = ("ARROWS : move   UP/DOWN at the edge : section   OK : install   1 : fav   2 : filter   3 : select   "
-            "4 : uninstall   BLUE : refresh   MENU : settings")
+            "4 : uninstall   BLUE : refresh   MENU : settings   INFO : device info")
 
     def buildSkin(self):
         c = tc()
@@ -2978,6 +3025,307 @@ class SettingsScreen(Screen):
 
     def cancel(self):
         self.close(False)
+
+
+
+# --------------------------------- شاشة معلومات الجهاز (زر INFO) ---------------------------------
+def get_macs():
+    """[(label, MAC)] of the real network interfaces: LAN (eth*) first, then WLAN."""
+    out = []
+    try:
+        names = sorted(os.listdir("/sys/class/net"), key=lambda n: (not n.startswith("eth"), n))
+    except OSError:
+        return out
+    for n in names:
+        if n == "lo" or n.startswith(("sit", "tun", "tap", "dummy", "bond", "docker", "veth", "br", "ip6", "teql", "ifb", "gre", "erspan", "ovs", "vir")):
+            continue
+        mac = read_file("/sys/class/net/%s/address" % n).upper()
+        if not re.match(r"^([0-9A-F]{2}:){5}[0-9A-F]{2}$", mac) or mac == "00:00:00:00:00:00":
+            continue
+        label = "LAN" if n.startswith("eth") else ("WLAN" if n.startswith(("wlan", "ra", "wl")) else n.upper())
+        out.append((label, mac))
+    return out[:2]
+
+
+def get_usb_devices():
+    """USB storage devices (even when not mounted): name, mount point(s), file system and used / total space."""
+    mounts = []
+    for line in read_file("/proc/mounts").splitlines():
+        p = line.split()
+        if len(p) >= 3 and p[0].startswith("/dev/sd"):
+            mounts.append((p[0], p[1].replace("\\040", " "), p[2]))
+    devs = []
+    try:
+        blocks = sorted(b for b in os.listdir("/sys/block") if re.match(r"^sd[a-z]+$", b))
+    except OSError:
+        blocks = []
+    for b in blocks:
+        try:
+            if "/usb" not in os.path.realpath("/sys/block/%s" % b):
+                continue
+        except OSError:
+            continue
+        name = " ".join(read_file("/sys/block/%s/device/%s" % (b, k)) for k in ("vendor", "model")).strip()
+        name = re.sub(r"\s+", " ", name) or "USB Storage"
+        try:
+            disk = int(read_file("/sys/block/%s/size" % b, "0")) * 512
+        except ValueError:
+            disk = 0
+        used = total = 0
+        mts, fs = [], []
+        for dev, mnt, fst in mounts:
+            if re.sub(r"\d+$", "", os.path.basename(dev)) != b:
+                continue
+            try:
+                st = os.statvfs(mnt)
+            except Exception:
+                continue
+            u = (st.f_blocks - st.f_bfree) * st.f_frsize
+            total += u + st.f_bavail * st.f_frsize
+            used += u
+            mts.append(mnt)
+            if fst not in fs:
+                fs.append(fst)
+        devs.append({"dev": "/dev/" + b, "name": name, "disk": disk, "used": used, "total": total,
+                     "mounts": mts, "fs": fs})
+    return devs
+
+
+def info_skin(keys):
+    """Large (about 1.5x) reading layout. keys = ordered list of (key, label, has_bar)."""
+    c = tc()
+    parts = [
+        '<screen name="MajorPanelInfo" position="0,0" size="%d,%d" flags="wfNoBorder" backgroundColor="%s">' % (_W, _H, c["bg"]),
+        box((0, 0, 1920, 110), c["card"]),
+        '<eLabel position="0,%d" size="%d,%d" backgroundColor="%s" zPosition="1"/>' % (s(106), _W, max(2, s(4)), c["hdr"]),
+        wid("i_title", (60, 20, 1300, 70), font=46, fg="#FFFFFF", valign="center"),
+        wid("i_clock", (1560, 20, 300, 70), font=52, fg="#FFFFFF", halign="right", valign="center"),
+        box((120, 135, 1680, 800), c["card"], 24),
+        wid("i_model", (140, 165, 560, 80), font=44, fg="#FFFFFF", halign="center", valign="center"),
+        pixw("i_pic", (150, 265, 540, 190)),
+        wid("i_image", (140, 470, 560, 46), font=30, fg=c["muted"], halign="center", valign="center"),
+        wid("i_py", (140, 520, 560, 46), font=30, fg=c["second"], halign="center", valign="center"),
+        box((718, 165, 2, 740), c["line"], z=2),
+    ]
+    y = 160
+    for key, label, bar in keys:
+        if key == "sep":
+            parts.append(box((745, y + 8, 1025, 2), c["line"], z=2))
+            y += 22
+            continue
+        h = 62 if key == "usbm" else 74
+        parts.append(wid("l_" + key, (745, y, 270, h), font=32, fg=c["muted"], valign="center", extra='noWrap="1"'))
+        parts.append(wid("v_" + key, (1015, y, 760, h), font=36, fg=c["text"], valign="center", extra='noWrap="1"'))
+        y += h
+        if bar:
+            parts.append(barw("bar_" + key, (1015, y - 4, 760, 14), c["card"]))
+            y += 26
+    parts += [
+        '<widget name="key_red" %s font="Regular;%d" foregroundColor="#FFFFFF" backgroundColor="%s" cornerRadius="%d" '
+        'halign="center" valign="center" zPosition="2"/>' % (rect(500, 955, 440, 66), s(30), c["red"], s(16)),
+        '<widget name="key_green" %s font="Regular;%d" foregroundColor="#FFFFFF" backgroundColor="%s" cornerRadius="%d" '
+        'halign="center" valign="center" zPosition="2"/>' % (rect(980, 955, 440, 66), s(30), c["green"], s(16)),
+        wid("hint", (40, 1030, 1840, 40), font=22, fg=c["muted"], bg=c["bg"], halign="center", valign="center"),
+        '</screen>',
+    ]
+    return "\n".join(parts)
+
+
+class InfoScreen(Screen):
+    """INFO key: the receiver details of the panel (model, image, Python, IP, MAC, CPU, RAM, HDD) + USB devices,
+    drawn big. LEFT / RIGHT switches between several USB devices; the numbers refresh every 3 seconds."""
+    SEGW = 760
+
+    def __init__(self, session):
+        self.t = T()
+        self.macs = get_macs()
+        self.keys = [("ip", "IP Address", False)]
+        for i, (lab, _m) in enumerate(self.macs or [("LAN", "")]):
+            self.keys.append(("mac%d" % i, "MAC " + lab, False))
+        self.keys += [("cpu", "CPU", False), ("ram", "RAM", True), ("hdd", "HDD", True), ("sep", "", False),
+                      ("usbn", "USB", False), ("usbm", "Mount", False), ("usbs", "Space", True)]
+        self.skin = info_skin(self.keys)
+        Screen.__init__(self, session)
+        self.setTitle(TITLE)
+        self.closing = False
+        self.usbIdx = 0
+        self.usb = []
+        self.barKey = {}
+        self.segPix = None
+        for k, _l, bar in self.keys:
+            if k != "sep":
+                self["l_" + k] = Label("")
+                self["v_" + k] = Label("")
+            if bar:
+                self["bar_" + k] = MenuList([], content=eListboxPythonMultiContent)
+                self["bar_" + k].l.setItemHeight(s(14))
+        for n in ("i_title", "i_clock", "i_model", "i_image", "i_py"):
+            self[n] = Label("")
+        self["i_pic"] = Pixmap()
+        self["key_red"] = Label(u"إغلاق | Close")
+        self["key_green"] = Label(u"تحديث | Refresh")
+        self["hint"] = Label("LEFT / RIGHT : switch USB device     GREEN : refresh     OK / INFO / EXIT : close")
+        self["actions"] = ActionMap(
+            ["OkCancelActions", "ColorActions", "DirectionActions", "EPGSelectActions"],
+            dict((k, safe(v)) for k, v in {
+                "ok": self.close, "cancel": self.close, "red": self.close, "info": self.close,
+                "green": self.refresh, "left": lambda: self.moveUsb(-1), "right": lambda: self.moveUsb(1),
+                "up": lambda: None, "down": lambda: None}.items()), -1)
+        self.timer = eTimer()
+        try:
+            self.timer.callback.append(self.refresh)
+        except AttributeError:
+            self._tconn = self.timer.timeout.connect(self.refresh)
+        self.onClose.append(self.releaseAll)
+        self.onLayoutFinish.append(self.start)
+
+    def releaseAll(self):
+        self.closing = True
+        try:
+            self.timer.stop()
+            del self.timer.callback[:]
+        except Exception:
+            pass
+        self._tconn = None
+        release_actions(self["actions"])
+
+    def start(self):
+        noNativeKeys(self)
+        n = BAR_SEGS if self.t["stops"] else 3
+        self.segPix = {"off": pix("seg_off"), "on": [pix("seg_on%d" % i) for i in range(n)]}
+        for k, _l, bar in self.keys:
+            if bar:
+                try:
+                    self["bar_" + k].instance.setSelectionEnable(0)
+                except Exception:
+                    pass
+        self["i_title"].setText(u"معلومات الجهاز | Device Info")
+        for k, lab, _b in self.keys:
+            if k != "sep":
+                self["l_" + k].setText(lab)
+        try:
+            title, image, ids = get_box_details()
+        except Exception:
+            title, image, ids = "Enigma2", "", []
+        self["i_model"].setText(title)
+        self["i_image"].setText(image)
+        self["i_py"].setText("Python %d.%d.%d" % tuple(sys.version_info[:3]))
+        try:
+            self.setPicture(find_box_image(ids))
+        except Exception as e:
+            dlog_error("info picture: %s" % e)
+        try:
+            self["v_cpu"].setText(get_cpu())
+        except Exception as e:
+            dlog_error("info cpu: %s" % e)
+        self.refresh()
+        self.timer.start(3000, False)
+
+    def setPicture(self, path):
+        inst = self["i_pic"].instance
+        ptr = LoadPixmap(path) if path else None
+        if not inst or not ptr:
+            return
+        maxw, maxh = s(540), s(190)
+        size = png_size(path) or (maxw, maxh)
+        ratio = min(maxw / float(size[0]), maxh / float(size[1]))
+        w, h = max(1, int(size[0] * ratio)), max(1, int(size[1] * ratio))
+        try:
+            inst.setScale(1)
+        except Exception:
+            pass
+        inst.resize(eSize(w, h))
+        inst.move(ePoint(s(150) + (maxw - w) // 2, s(265) + (maxh - h) // 2))
+        inst.setPixmap(ptr)
+        inst.show()
+
+    def setBar(self, key, pct):
+        pixs = self.segPix
+        if not pixs or not pixs["off"]:
+            return
+        on = 0 if pct <= 0 else max(1, int(round(BAR_SEGS * min(pct, 100.0) / 100.0)))
+        level = -1 if self.t["stops"] else (0 if pct < 75 else (1 if pct < 90 else 2))
+        if self.barKey.get(key) == (on, level):
+            return
+        self.barKey[key] = (on, level)
+        pitch = self.SEGW / float(BAR_SEGS)
+        row = [key]
+        for i in range(BAR_SEGS):
+            ptr = pixs["on"][i if level < 0 else level] if i < on else pixs["off"]
+            if ptr:
+                row.append(MultiContentEntryPixmapAlphaBlend(pos=(s(i * pitch), 0), size=(max(2, s(pitch - 4)), s(14)),
+                                                             png=ptr, flags=BT_SCALE))
+        self["bar_" + key].setList([row])
+
+    def put(self, key, text, color=None):
+        self["v_" + key].setText(text)
+        setColor(self["v_" + key], color or self.t["text"])
+
+    def moveUsb(self, step):
+        if len(self.usb) > 1:
+            self.usbIdx = (self.usbIdx + step) % len(self.usb)
+            self.showUsb()
+
+    def refresh(self):
+        if self.closing:
+            return
+        c = self.t
+        try:
+            ip = get_ip()
+            self.put("ip", ip or "Not connected", c["accent"] if ip else c["muted"])
+        except Exception:
+            pass
+        macs = self.macs or [("LAN", "")]
+        for i, (_lab, mac) in enumerate(macs):
+            self.put("mac%d" % i, mac or "Not found", None if mac else c["muted"])
+        try:
+            used, total = get_meminfo()
+            if total:
+                pct = used * 100.0 / total
+                self.put("ram", "%d / %d MB   (%d%%)" % (used, total, pct))
+                self.setBar("ram", pct)
+        except Exception:
+            pass
+        try:
+            hdd = get_hdd()
+            if hdd and hdd["total"]:
+                pct = hdd["used"] * 100.0 / hdd["total"]
+                self.put("hdd", "%s   (%d%%)" % (fmt_pair(hdd["used"], hdd["total"]), pct))
+                self.setBar("hdd", pct)
+            else:
+                self.put("hdd", "Not connected", c["muted"])
+                self.setBar("hdd", 0)
+        except Exception:
+            pass
+        try:
+            self.usb = get_usb_devices()
+        except Exception as e:
+            dlog_error("get_usb_devices: %s" % e)
+            self.usb = []
+        self.usbIdx = min(self.usbIdx, max(len(self.usb) - 1, 0))
+        self.showUsb()
+
+    def showUsb(self):
+        c = self.t
+        if not self.usb:
+            self.put("usbn", "Not connected", c["muted"])
+            self.put("usbm", "")
+            self.put("usbs", "")
+            self.setBar("usbs", 0)
+            return
+        d = self.usb[self.usbIdx]
+        tag = ("   (%d/%d)" % (self.usbIdx + 1, len(self.usb))) if len(self.usb) > 1 else ""
+        self.put("usbn", d["name"] + tag, c["accent"])
+        if d["total"]:
+            pct = d["used"] * 100.0 / d["total"]
+            free = d["total"] - d["used"]
+            self.put("usbm", "%s   |   %s" % (", ".join(d["mounts"][:2]), "/".join(d["fs"])))
+            self.put("usbs", "%s   (%d%%)   Free %s" % (fmt_pair(d["used"], d["total"]), pct, fmt_size(free)))
+            self.setBar("usbs", pct)
+        else:
+            self.put("usbm", "%s   |   Not mounted" % d["dev"], c["warn"])
+            self.put("usbs", ("Size %s" % fmt_size(d["disk"])) if d["disk"] else "")
+            self.setBar("usbs", 0)
 
 
 # --------------------------------- شاشة التيرمنال ------------------------------
