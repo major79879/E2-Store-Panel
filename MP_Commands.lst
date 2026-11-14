@@ -282,3 +282,8 @@ wget -q "--no-check-certificate" https://raw.githubusercontent.com/ciefp/CiefpSe
 
 ## === # Abertis 30W - Ciefp # = # اضافة مفضلة قنوات ابيرتيس الاسبانية الارضية لملف قنواتك # === #
 wget -q --no-check-certificate "https://raw.githubusercontent.com/major79879/Major_Addons/refs/heads/main/installer_abertis_30w.sh" -O - | /bin/sh
+
+## ============================== +++ Picons +++ ============================= ##
+
+## === # Chocholousek Picons - S3N0 # = # أدة إضافة بيكونات محتلفة لقنوات الاقمار # === #
+wget https://github.com/s3n0/e2plugins/raw/master/ChocholousekPicons/online-setup -O - | /bin/sh
