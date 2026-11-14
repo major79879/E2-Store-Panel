@@ -23,6 +23,9 @@ opkg install --force-reinstall enigma2-plugin-systemplugins-serviceapp exteplaye
 ## === # E2I Player Deps - Enigma2 Community # = # إضافة المكتبات اللازمة لتشغيل الاضافة بطريقة سليمة # === ##
 opkg install enigma2-plugin-extensions-e2iplayer-deps
 
+## === # EPG Import - Enigma2 Community # = # إداة إستيراد بيانات دليل البرامج الإلكتروني مصادر قابلة للتهيئة # === ##
+opkg update && opkg install enigma2-plugin-extensions-epgimport
+
 ## === # OpenATV Feed 2 Devel - Enigma2 Community # = # تغيير فيد الصورة الاصلي لفيد الصورة للمطوريين لتحديث الصورة بإضافات قيد التطوير # === ##
 wget -O - -q https://feeds2.mynonpublic.com/devel-feed | bash
 
